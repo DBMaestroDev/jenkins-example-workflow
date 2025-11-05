@@ -19,6 +19,8 @@ pipeline {
     DBM_AGENT_ENDPOINT = 'DELL-NICOLAST:8017'
     // Release Source environment name
     DBM_ENV_NAME_RS = 'Release Source'
+    // Production environment name
+    DBM_ENV_NAME_PROD = 'Prod_Env_1'
     // Project and environment for DBmaestro (sourced from build parameters)
     DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
     // Dev environment name (configured in the Jenkinsfile)
@@ -95,12 +97,34 @@ pipeline {
             }
         }
 
-        stage('Upgrade in DBmaestro') {
+        stage('Upgrade Release Source Environment') {
             steps {
                 // Use Jenkins credentials 'dbm_credentials' (username/password) to run upgrade
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
                     java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Manual approval - Production') {
+            steps {
+                // Pause the pipeline and wait for a human to approve the production upgrade
+                script {
+                    timeout(time: 4, unit: 'HOURS') {
+                        input message: "Manual approval required - approve Production Upgrade for package ${env.TASK_ID}", ok: 'Approve'
+                    }
+                }
+            }
+        }
+
+        stage('Upgrade Production Environment') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) to run production upgrade
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
