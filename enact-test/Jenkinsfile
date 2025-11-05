@@ -8,9 +8,9 @@ pipeline {
         string(name: 'DBM_TASK_ID', defaultValue: '', description: 'Optional DBmaestro Task ID; if empty, extracted from the latest commit message')
     }
     // Poll SCM every 2 minutes
-    triggers {
-        pollSCM('H/2 * * * *')
-    }
+    // triggers {
+    //     pollSCM('H/2 * * * *')
+    // }
     environment {
     // Path to the DBmaestro Agent JAR on the Windows agent
     // Note: keep backslashes escaped for Groovy strings
