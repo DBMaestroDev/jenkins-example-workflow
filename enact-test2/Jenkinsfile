@@ -3,9 +3,7 @@ pipeline {
     // Make project and environment configurable at build time with sensible defaults
     parameters {
         string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
-    // DBM_ENV_NAME_DEV is set as an environment variable below (not a build parameter)
-        // Optional: if provided, use this Task ID instead of parsing from the commit message
-        string(name: 'DBM_TASK_ID', defaultValue: '', description: 'Optional DBmaestro Task ID; if empty, extracted from the latest commit message')
+        string(name: 'DBM_TASK_ID', defaultValue: '', description: 'Task ID; must exist in the repository')
     }
     // This pipeline requires a DBM_TASK_ID parameter and does not poll SCM.
     // It will verify the provided TaskID exists in the repository before proceeding.
