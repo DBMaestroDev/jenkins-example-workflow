@@ -86,7 +86,7 @@ pipeline {
             }
         }
 
-        stage('Manual verification') {
+        stage('Manual apporval - Release Source') {
             steps {
                 // Pause the pipeline and wait for a human to approve the upgrade
                 script {
