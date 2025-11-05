@@ -3,7 +3,7 @@ pipeline {
     // Make project and environment configurable at build time with sensible defaults
     parameters {
         string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
-        string(name: 'DBM_ENV_NAME', defaultValue: 'Dev_Env_1', description: 'DBmaestro environment name')
+    // DBM_ENV_NAME_DEV is set as an environment variable below (not a build parameter)
         // Optional: if provided, use this Task ID instead of parsing from the commit message
         string(name: 'DBM_TASK_ID', defaultValue: '', description: 'Optional DBmaestro Task ID; if empty, extracted from the latest commit message')
     }
@@ -17,9 +17,12 @@ pipeline {
     DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
     // DBmaestro agent endpoint (host:port)
     DBM_AGENT_ENDPOINT = 'DELL-NICOLAST:8017'
+    // Release Source environment name
+    DBM_ENV_NAME_RS = 'Release Source'
     // Project and environment for DBmaestro (sourced from build parameters)
     DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
-    DBM_ENV_NAME = "${params.DBM_ENV_NAME}"
+    // Dev environment name (configured in the Jenkinsfile)
+    DBM_ENV_NAME_DEV = 'Dev_Env_1'
         // Auth type for DBmaestro (e.g. DBmaestroAccount)
         DBM_AUTH_TYPE = 'DBmaestroAccount'
     }
@@ -64,7 +67,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     // Run the requested PowerShell command, substituting the detected TASK_ID and credential vars
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -97,7 +100,7 @@ pipeline {
                 // Use Jenkins credentials 'dbm_credentials' (username/password) to run upgrade
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
