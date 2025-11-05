@@ -15,6 +15,8 @@ pipeline {
     // Path to the DBmaestro Agent JAR on the Windows agent
     // Note: keep backslashes escaped for Groovy strings
     DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+    // DBmaestro agent endpoint (host:port)
+    DBM_AGENT_ENDPOINT = 'DELL-NICOLAST:8017'
     // Project and environment for DBmaestro (sourced from build parameters)
     DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
     DBM_ENV_NAME = "${params.DBM_ENV_NAME}"
@@ -62,7 +64,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     // Run the requested PowerShell command, substituting the detected TASK_ID and credential vars
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "DELL-NICOLAST:8017" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -73,7 +75,29 @@ pipeline {
                 // Use Jenkins credentials 'dbm_credentials' (username/password) to run a pre-check
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -PreCheck -ProjectName "\$env:DBM_PROJECT_NAME" -Server "DELL-NICOLAST:8017" -PackageName "${env.TASK_ID}" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -PreCheck -ProjectName "\$env:DBM_PROJECT_NAME" -Server "\$env:DBM_AGENT_ENDPOINT" -PackageName "${env.TASK_ID}" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Manual verification') {
+            steps {
+                // Pause the pipeline and wait for a human to approve the upgrade
+                script {
+                    timeout(time: 4, unit: 'HOURS') {
+                        input message: "Manual verification required - approve Upgrade for package ${env.TASK_ID}", ok: 'Approve'
+                    }
+                }
+            }
+        }
+
+        stage('Upgrade in DBmaestro') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) to run upgrade
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
