@@ -1,0 +1,134 @@
+pipeline {
+    agent any
+    // Make project and environment configurable at build time with sensible defaults
+    parameters {
+        string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
+    // DBM_ENV_NAME_DEV is set as an environment variable below (not a build parameter)
+        // Optional: if provided, use this Task ID instead of parsing from the commit message
+        string(name: 'DBM_TASK_ID', defaultValue: '', description: 'Optional DBmaestro Task ID; if empty, extracted from the latest commit message')
+    }
+    // This pipeline requires a DBM_TASK_ID parameter and does not poll SCM.
+    // It will verify the provided TaskID exists in the repository before proceeding.
+    environment {
+    // Path to the DBmaestro Agent JAR on the Windows agent
+    // Note: keep backslashes escaped for Groovy strings
+    DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+    // DBmaestro agent endpoint (host:port)
+    DBM_AGENT_ENDPOINT = 'DELL-NICOLAST:8017'
+    // Release Source environment name
+    DBM_ENV_NAME_RS = 'Release Source'
+    // Production environment name
+    DBM_ENV_NAME_PROD = 'Prod_Env_1'
+    // Project and environment for DBmaestro (sourced from build parameters)
+    DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
+    // Dev environment name (configured in the Jenkinsfile)
+    DBM_ENV_NAME_DEV = 'Dev_Env_1'
+        // Auth type for DBmaestro (e.g. DBmaestroAccount)
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the specified repository directly (change branch if needed)
+                // Use the GitHub token credential 'gh_user_token' to authenticate cloning the private repo
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], userRemoteConfigs: [[url: 'https://github.com/DBMaestroDev/source-control-example.git', credentialsId: 'gh_user_token']]])
+            }
+        }
+
+        stage('Detect TaskID') {
+            steps {
+                        script {
+                            // Require the DBM_TASK_ID parameter. If empty, fail early.
+                            if (!params.DBM_TASK_ID?.trim()) {
+                                error("DBM_TASK_ID parameter is required for this pipeline. Provide a Task ID and retry.")
+                            }
+
+                            env.TASK_ID = params.DBM_TASK_ID.trim()
+                            echo "Using provided DBM_TASK_ID: ${env.TASK_ID}"
+
+                            // Verify the remote repository contains a commit referencing this TaskID.
+                            // Fetch all remotes first, then search commit messages for 'TaskID: <value>'.
+                            def searchCmd = "git fetch --all --prune; git log --all --grep=\"TaskID: ${env.TASK_ID}\" -n 1 --pretty=%B"
+                            def result = powershell(returnStdout: true, script: searchCmd).trim()
+                            if (result) {
+                                echo "Found commit referencing TaskID ${env.TASK_ID}:\n${result}"
+                            } else {
+                                error("No commit in the repository references TaskID: ${env.TASK_ID}. Aborting.")
+                            }
+                        }
+            }
+        }
+
+        stage('Create Package in DBmaestro') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) instead of hardcoding
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    // Run the requested PowerShell command, substituting the detected TASK_ID and credential vars
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Precheck Package in DBmaestro') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) to run a pre-check
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -PreCheck -ProjectName "\$env:DBM_PROJECT_NAME" -Server "\$env:DBM_AGENT_ENDPOINT" -PackageName "${env.TASK_ID}" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Manual apporval - Release Source') {
+            steps {
+                // Pause the pipeline and wait for a human to approve the upgrade
+                script {
+                    timeout(time: 4, unit: 'HOURS') {
+                        input message: "Manual verification required - approve Upgrade for package ${env.TASK_ID}", ok: 'Approve'
+                    }
+                }
+            }
+        }
+
+        stage('Upgrade Release Source Environment') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) to run upgrade
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Manual approval - Production') {
+            steps {
+                // Pause the pipeline and wait for a human to approve the production upgrade
+                script {
+                    timeout(time: 4, unit: 'HOURS') {
+                        input message: "Manual approval required - approve Production Upgrade for package ${env.TASK_ID}", ok: 'Approve'
+                    }
+                }
+            }
+        }
+
+        stage('Upgrade Production Environment') {
+            steps {
+                // Use Jenkins credentials 'dbm_credentials' (username/password) to run production upgrade
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "Completed pipeline. TASK_ID=${env.TASK_ID}"
+        }
+    }
+}
