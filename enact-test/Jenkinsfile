@@ -25,8 +25,8 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Checkout the specified repository directly (change branch if needed)
-                // Use the GitHub token credential 'gh_token' to authenticate cloning the private repo
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], userRemoteConfigs: [[url: 'https://github.com/DBMaestroDev/source-control-example.git', credentialsId: 'gh_token']]])
+                // Use the GitHub token credential 'gh_user_token' to authenticate cloning the private repo
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], userRemoteConfigs: [[url: 'https://github.com/DBMaestroDev/source-control-example.git', credentialsId: 'gh_user_token']]])
             }
         }
 
