@@ -7,6 +7,9 @@ pipeline {
     environment {
         // default if TaskID not found in commit message
         DEFAULT_TASK = 'Task-1'
+        // Path to the DBmaestro Agent JAR on the Windows agent
+        // Note: keep backslashes escaped for Groovy strings
+        DBMAESTRO_JAR = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
     }
     stages {
         stage('Checkout') {
@@ -41,7 +44,7 @@ pipeline {
             steps {
                 // Run the requested PowerShell command, substituting the detected TASK_ID
                 powershell """
-                java -jar DBmaestroAgent.jar -Build -ProjectName "DemoProject" -EnvName "Dev_Env_1" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "Package-2" -Server "DELL-NICOLAST:8017" -UseSSL True -AuthType DBmaestroAccount -UserName "su@dbmaestro.local" -Password "d5BfNaR6s7fIGT5Sj2oVWQDYQhetkNfh"
+                java -jar "\$env:DBMAESTRO_JAR" -Build -ProjectName "DemoProject" -EnvName "Dev_Env_1" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "Package-2" -Server "DELL-NICOLAST:8017" -UseSSL True -AuthType DBmaestroAccount -UserName "su@dbmaestro.local" -Password "d5BfNaR6s7fIGT5Sj2oVWQDYQhetkNfh"
                 """
             }
         }
