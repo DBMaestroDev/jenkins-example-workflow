@@ -44,6 +44,9 @@ pipeline {
                     if (params.DBM_TASK_ID?.trim()) {
                         env.TASK_ID = params.DBM_TASK_ID.trim()
                         echo "Using provided DBM_TASK_ID: ${env.TASK_ID}"
+
+                        // Set the Jenkins build display name to the TaskID for easy identification in the UI
+                        currentBuild.displayName = "${env.TASK_ID}"
                     } else {
                         // Get the most recent commit message
                         def commitMsg = powershell(returnStdout: true, script: 'git --no-pager log -1 --pretty=%B').trim()
@@ -51,9 +54,12 @@ pipeline {
 
                         // Look for a line containing: TaskID: <value>
                         def matcher = (commitMsg =~ /(?m)TaskID:\s*(\S+)/)
-                        if (matcher) {
+                            if (matcher) {
                             env.TASK_ID = matcher[0][1]
                             echo "Found TaskID: ${env.TASK_ID}"
+
+                            // Set the Jenkins build display name to the TaskID for easy identification in the UI
+                            currentBuild.displayName = "${env.TASK_ID}"
                         } else {
                             // Fail the build if no TaskID is present in the commit message
                             error("No TaskID found in commit message — failing the build.")
@@ -99,11 +105,28 @@ pipeline {
 
         stage('Upgrade Release Source Environment') {
             steps {
-                // Use Jenkins credentials 'dbm_credentials' (username/password) to run upgrade
-                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
-                    powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
-                    """
+                // Allow a human to manually retry the upgrade on failure via an input prompt.
+                script {
+                    def keepTrying = true
+                    while (keepTrying) {
+                        try {
+                            withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                powershell """
+                                java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                """
+                            }
+                            echo "Upgrade succeeded for package ${env.TASK_ID}"
+                            keepTrying = false
+                        } catch (err) {
+                            echo "Upgrade attempt failed: ${err}"
+                            def action = input message: "Upgrade failed for package ${env.TASK_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            if (action == 'Abort') {
+                                error("Upgrade aborted by user after failure.")
+                            } else {
+                                echo "User chose to retry the upgrade. Retrying..."
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -121,11 +144,28 @@ pipeline {
 
         stage('Upgrade Production Environment') {
             steps {
-                // Use Jenkins credentials 'dbm_credentials' (username/password) to run production upgrade
-                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
-                    powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
-                    """
+                // Allow a human to manually retry the production upgrade on failure via an input prompt.
+                script {
+                    def keepTrying = true
+                    while (keepTrying) {
+                        try {
+                            withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                powershell """
+                                java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.TASK_ID}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                """
+                            }
+                            echo "Production upgrade succeeded for package ${env.TASK_ID}"
+                            keepTrying = false
+                        } catch (err) {
+                            echo "Production upgrade attempt failed: ${err}"
+                            def action = input message: "Production upgrade failed for package ${env.TASK_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            if (action == 'Abort') {
+                                error("Production upgrade aborted by user after failure.")
+                            } else {
+                                echo "User chose to retry the production upgrade. Retrying..."
+                            }
+                        }
+                    }
                 }
             }
         }
