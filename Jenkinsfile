@@ -44,7 +44,7 @@ pipeline {
             steps {
                 // Run the requested PowerShell command, substituting the detected TASK_ID
                 powershell """
-                java -jar "\$env:DBMAESTRO_JAR" -Build -ProjectName "DemoProject" -EnvName "Dev_Env_1" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "Package-2" -Server "DELL-NICOLAST:8017" -UseSSL True -AuthType DBmaestroAccount -UserName "su@dbmaestro.local" -Password "d5BfNaR6s7fIGT5Sj2oVWQDYQhetkNfh"
+                java -jar "\$env:DBMAESTRO_JAR" -Build -ProjectName "DemoProject" -EnvName "Dev_Env_1" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.TASK_ID}" -Server "DELL-NICOLAST:8017" -UseSSL True -AuthType DBmaestroAccount -UserName "su@dbmaestro.local" -Password "d5BfNaR6s7fIGT5Sj2oVWQDYQhetkNfh"
                 """
             }
         }
