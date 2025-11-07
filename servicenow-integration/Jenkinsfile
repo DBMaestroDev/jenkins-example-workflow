@@ -102,6 +102,12 @@ pipeline {
                         env.CR_STATUS = changeInfo.state ?: 'unknown'
                         env.CR_SHORT_DESC = changeInfo.short_description ?: 'N/A'
                         env.CR_SYS_ID = changeInfo.sys_id ?: ''
+                        
+                        // Check if change request is in closed state (state = 3)
+                        if (env.CR_STATUS == "3") {
+                            error("Change Request ${env.CR_ID} is in closed state and cannot be processed.")
+                        }
+                        
                         echo "Found Change Request: ${env.CR_ID} | sys_id: ${env.CR_SYS_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
                     }
                 }
