@@ -29,7 +29,7 @@ pipeline {
     stages {
         stage('Validate Parameters') {
             steps {
-                lock(resource: "cr-${params.CHANGE_REQUEST_ID}", skipIfLocked: false, time: 4000, unit: 'SECONDS') {
+                lock(resource: "cr-${params.CHANGE_REQUEST_ID}", skipIfLocked: true) {
                     script {
                         if (!params.CHANGE_REQUEST_ID?.trim()) {
                             error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
