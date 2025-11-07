@@ -160,7 +160,7 @@ pipeline {
                                 }
                             """).trim()
 
-                            if (response == "scheduled" || response.contains("scheduled")) {
+                            if (response == "-2" || response.contains("-2")) {
                                 isScheduled = true
                                 echo "Change request reached 'scheduled' status."
                             } else {
@@ -248,7 +248,7 @@ pipeline {
                                 }
                             """).trim()
 
-                            if (response == "implement" || response.contains("implement")) {
+                            if (response == "-1" || response.contains("-1")) {
                                 isImplemented = true
                                 echo "Change request reached 'implement' status."
                             } else {
