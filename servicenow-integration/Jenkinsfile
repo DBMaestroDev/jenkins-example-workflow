@@ -133,7 +133,7 @@ pipeline {
 DBmaestro package ${env.CR_ID} created
 
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 
 Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAME_RS}
 "@
@@ -193,7 +193,7 @@ DBmaestro precheck completed
 
 Package: ${env.DBM_PACKAGE_NAME}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 "@
                             \$body = @{ work_notes = \$message } | ConvertTo-Json
 
@@ -309,7 +309,7 @@ Release Source upgrade SUCCEEDED
 
 Package: ${env.DBM_PACKAGE_NAME}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 "@
                                     \$body = @{ work_notes = \$message } | ConvertTo-Json
 
@@ -352,7 +352,7 @@ Release Source upgrade FAILED
 
 Package: ${env.DBM_PACKAGE_NAME}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 
 Error: ${err}
 "@
@@ -484,7 +484,7 @@ Production upgrade SUCCEEDED
 
 Package: ${env.DBM_PACKAGE_NAME}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 "@
                                     \$body = @{ work_notes = \$message } | ConvertTo-Json
 
@@ -526,7 +526,7 @@ Production upgrade FAILED
 
 Package: ${env.DBM_PACKAGE_NAME}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
-Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+Build URL: \$overviewUrl
 
 Error: ${err}
 "@
