@@ -29,23 +29,25 @@ pipeline {
     stages {
         stage('Validate Parameters') {
             steps {
-                script {
-                    if (!params.CHANGE_REQUEST_ID?.trim()) {
-                        error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
-                    }
-                    env.CR_ID = params.CHANGE_REQUEST_ID.trim()
-                    echo "Using Change Request ID: ${env.CR_ID}"
+                lock(resource: "cr-${params.CHANGE_REQUEST_ID}", skipIfLocked: false, time: 4000, unit: 'SECONDS') {
+                    script {
+                        if (!params.CHANGE_REQUEST_ID?.trim()) {
+                            error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
+                        }
+                        env.CR_ID = params.CHANGE_REQUEST_ID.trim()
+                        echo "Using Change Request ID: ${env.CR_ID}"
 
-                    // Set DBM_PACKAGE_NAME to CR_ID if not provided
-                    if (params.DBM_PACKAGE_NAME?.trim()) {
-                        env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
-                    } else {
-                        env.DBM_PACKAGE_NAME = env.CR_ID
-                    }
-                    echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
+                        // Set DBM_PACKAGE_NAME to CR_ID if not provided
+                        if (params.DBM_PACKAGE_NAME?.trim()) {
+                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        } else {
+                            env.DBM_PACKAGE_NAME = env.CR_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
 
-                    // Set build display name to the change request ID
-                    currentBuild.displayName = "${env.CR_ID}"
+                        // Set build display name to the change request ID
+                        currentBuild.displayName = "${env.CR_ID}"
+                    }
                 }
             }
         }
