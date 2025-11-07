@@ -117,7 +117,8 @@ pipeline {
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$sysId = "${env.CR_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
-                            \$message = "DBmaestro package ${env.CR_ID} created by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME})"
+                            \$buildUrl = "${env.BUILD_URL}"
+                            \$message = "DBmaestro package ${env.CR_ID} created by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME}). Build URL: \$buildUrl. Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAME_RS}"
                             \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                             \$username = "\$env:SN_USER"
