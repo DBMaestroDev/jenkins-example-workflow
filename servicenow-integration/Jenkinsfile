@@ -84,12 +84,13 @@ pipeline {
                             error("Failed to query ServiceNow: ${response}")
                         }
 
-                        // Parse JSON response and extract status and other details
+                        // Parse JSON response and extract status, sys_id and other details
                         def jsonSlurper = new groovy.json.JsonSlurper()
                         def changeInfo = jsonSlurper.parseText(response)
                         env.CR_STATUS = changeInfo.state ?: 'unknown'
                         env.CR_SHORT_DESC = changeInfo.short_description ?: 'N/A'
-                        echo "Found Change Request: ${env.CR_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
+                        env.CR_SYS_ID = changeInfo.sys_id ?: ''
+                        echo "Found Change Request: ${env.CR_ID} | sys_id: ${env.CR_SYS_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
                     }
                 }
             }
@@ -105,12 +106,91 @@ pipeline {
             }
         }
 
+        // Post a work note to ServiceNow that the DBmaestro package was created
+        stage('Post Comment: Package Created') {
+            steps {
+                script {
+                    if (env.CR_SYS_ID?.trim()) {
+                        withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                            powershell """
+                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                            \$table = "\$env:SERVICENOW_TABLE"
+                            \$sysId = "${env.CR_SYS_ID}"
+                            if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
+                            \$message = "DBmaestro package ${env.CR_ID} created by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME})"
+                            \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                            \$username = "\$env:SN_USER"
+                            \$password = "\$env:SN_PASS"
+                            \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                            \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                            \$headers = @{
+                                "Accept" = "application/json"
+                                "Content-Type" = "application/json"
+                            }
+
+                            try {
+                                Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                Write-Output "Posted package-created note to ServiceNow"
+                            } catch {
+                                Write-Output "Failed to post package-created note: \$_"
+                                # do not fail the pipeline for comment posting
+                            }
+                            """
+                        }
+                    } else {
+                        echo "Skipping ServiceNow comment post: CR sys_id not available"
+                    }
+                }
+            }
+        }
+
         stage('Precheck Package in DBmaestro') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
                     java -jar "\$env:DBM_JAR_PATH" -PreCheck -ProjectName "\$env:DBM_PROJECT_NAME" -Server "\$env:DBM_AGENT_ENDPOINT" -PackageName "${env.CR_ID}" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
+                }
+            }
+        }
+
+        // Post a work note to ServiceNow that the DBmaestro precheck completed
+        stage('Post Comment: Precheck Completed') {
+            steps {
+                script {
+                    if (env.CR_SYS_ID?.trim()) {
+                        withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                            powershell """
+                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                            \$table = "\$env:SERVICENOW_TABLE"
+                            \$sysId = "${env.CR_SYS_ID}"
+                            if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
+                            \$message = "DBmaestro precheck for package ${env.CR_ID} completed by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME})"
+                            \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                            \$username = "\$env:SN_USER"
+                            \$password = "\$env:SN_PASS"
+                            \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                            \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                            \$headers = @{
+                                "Accept" = "application/json"
+                                "Content-Type" = "application/json"
+                            }
+
+                            try {
+                                Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                Write-Output "Posted precheck-completed note to ServiceNow"
+                            } catch {
+                                Write-Output "Failed to post precheck-completed note: \$_"
+                            }
+                            """
+                        }
+                    } else {
+                        echo "Skipping ServiceNow comment post: CR sys_id not available"
+                    }
                 }
             }
         }
@@ -188,9 +268,76 @@ pipeline {
                                 """
                             }
                             echo "Release Source upgrade succeeded for package ${env.CR_ID}"
+                            // Post success note to ServiceNow (best-effort)
+                            if (env.CR_SYS_ID?.trim()) {
+                                withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                                    powershell """
+                                    \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                    \$table = "\$env:SERVICENOW_TABLE"
+                                    \$sysId = "${env.CR_SYS_ID}"
+                                    \$message = "Release Source upgrade succeeded for package ${env.CR_ID} on build ${env.BUILD_NUMBER}"
+                                    \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                    \$username = "\$env:SN_USER"
+                                    \$password = "\$env:SN_PASS"
+                                    \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                    \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                                    \$headers = @{
+                                        "Accept" = "application/json"
+                                        "Content-Type" = "application/json"
+                                    }
+
+                                    try {
+                                        Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                        Write-Output "Posted RS-upgrade-success note to ServiceNow"
+                                    } catch {
+                                        Write-Output "Failed to post RS-upgrade-success note: \$_"
+                                    }
+                                    """
+                                }
+                            } else {
+                                echo "Skipping ServiceNow success comment: CR sys_id not available"
+                            }
                             keepTrying = false
                         } catch (err) {
                             echo "Upgrade attempt failed: ${err}"
+                            // Post a failure note to ServiceNow (non-fatal for comment posting)
+                            try {
+                                if (env.CR_SYS_ID?.trim()) {
+                                    withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                                        powershell """
+                                        \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                        \$table = "\$env:SERVICENOW_TABLE"
+                                        \$sysId = "${env.CR_SYS_ID}"
+                                        \$message = "Release Source upgrade attempt FAILED for package ${env.CR_ID} on build ${env.BUILD_NUMBER}. Error: ${err}"
+                                        \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                        \$username = "\$env:SN_USER"
+                                        \$password = "\$env:SN_PASS"
+                                        \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                        \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                                        \$headers = @{
+                                            "Accept" = "application/json"
+                                            "Content-Type" = "application/json"
+                                        }
+
+                                        try {
+                                            Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                            Write-Output "Posted RS-upgrade-failure note to ServiceNow"
+                                        } catch {
+                                            Write-Output "Failed to post RS-upgrade-failure note: \$_"
+                                        }
+                                        """
+                                    }
+                                } else {
+                                    echo "Skipping ServiceNow failure comment: CR sys_id not available"
+                                }
+                            } catch (postErr) {
+                                echo "Posting failure note also failed: ${postErr}"
+                            }
+
                             def action = input message: "Upgrade failed for package ${env.CR_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Upgrade aborted by user after failure.")
@@ -277,8 +424,76 @@ pipeline {
                             }
                             echo "Production upgrade succeeded for package ${env.CR_ID}"
                             keepTrying = false
+                        
+                            // Post success note to ServiceNow (best-effort)
+                            if (env.CR_SYS_ID?.trim()) {
+                                withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                                    powershell """
+                                    \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                    \$table = "\$env:SERVICENOW_TABLE"
+                                    \$sysId = "${env.CR_SYS_ID}"
+                                    \$message = "Production upgrade succeeded for package ${env.CR_ID} on build ${env.BUILD_NUMBER}"
+                                    \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                    \$username = "\$env:SN_USER"
+                                    \$password = "\$env:SN_PASS"
+                                    \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                    \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                                    \$headers = @{
+                                        "Accept" = "application/json"
+                                        "Content-Type" = "application/json"
+                                    }
+
+                                    try {
+                                        Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                        Write-Output "Posted Prod-upgrade-success note to ServiceNow"
+                                    } catch {
+                                        Write-Output "Failed to post Prod-upgrade-success note: \$_"
+                                    }
+                                    """
+                                }
+                            } else {
+                                echo "Skipping ServiceNow success comment: CR sys_id not available"
+                            }
                         } catch (err) {
                             echo "Production upgrade attempt failed: ${err}"
+                            // Post a failure note to ServiceNow (best-effort)
+                            try {
+                                if (env.CR_SYS_ID?.trim()) {
+                                    withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+                                        powershell """
+                                        \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                        \$table = "\$env:SERVICENOW_TABLE"
+                                        \$sysId = "${env.CR_SYS_ID}"
+                                        \$message = "Production upgrade attempt FAILED for package ${env.CR_ID} on build ${env.BUILD_NUMBER}. Error: ${err}"
+                                        \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                        \$username = "\$env:SN_USER"
+                                        \$password = "\$env:SN_PASS"
+                                        \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                        \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+
+                                        \$headers = @{
+                                            "Accept" = "application/json"
+                                            "Content-Type" = "application/json"
+                                        }
+
+                                        try {
+                                            Invoke-RestMethod -Uri (\$endpoint + "/api/now/table/" + \$table + "/" + \$sysId) -Method Patch -Credential \$credential -Headers \$headers -Body \$body -ErrorAction Stop
+                                            Write-Output "Posted Prod-upgrade-failure note to ServiceNow"
+                                        } catch {
+                                            Write-Output "Failed to post Prod-upgrade-failure note: \$_"
+                                        }
+                                        """
+                                    }
+                                } else {
+                                    echo "Skipping ServiceNow failure comment: CR sys_id not available"
+                                }
+                            } catch (postErr) {
+                                echo "Posting failure note also failed: ${postErr}"
+                            }
+
                             def action = input message: "Production upgrade failed for package ${env.CR_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Production upgrade aborted by user after failure.")
