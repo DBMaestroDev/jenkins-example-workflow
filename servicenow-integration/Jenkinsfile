@@ -46,39 +46,41 @@ pipeline {
                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                         echo "Querying ServiceNow for change request: ${env.CR_ID}"
 
-                        def query = "number=${env.CR_ID}"
-                        def snApiUrl = "\$env:SERVICENOW_ENDPOINT/api/now/table/\$env:SERVICENOW_TABLE?sysparm_query=${query}&sysparm_limit=1"
-
                         def response = powershell(returnStdout: true, script: """
-                            \$credPair = "\$env:SN_USER:\$env:SN_PASS"
-                            \$encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(\$credPair))
-                            \$headers = @{
-                                "Authorization" = "Basic \$encodedCredentials"
-                                "Accept" = "application/json"
-                            }
+                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                            \$table = "\$env:SERVICENOW_TABLE"
+                            \$crId = "${env.CR_ID}"
+                            \$query = "number=\$crId"
+                            \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                            
+                            \$username = "\$env:SN_USER"
+                            \$password = "\$env:SN_PASS"
+                            \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                            \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
                             try {
-                                \$response = Invoke-RestMethod -Uri "${snApiUrl}" -Method Get -Headers \$headers -ErrorAction Stop
+                                \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
                                 if (\$response.result.Count -gt 0) {
                                     \$change = \$response.result[0]
-                                    Write-Output \$change | ConvertTo-Json
+                                    Write-Output (\$change | ConvertTo-Json -Compress)
                                 } else {
                                     Write-Output "NOT_FOUND"
                                 }
                             } catch {
                                 Write-Error "ServiceNow API query failed: \$_"
+                                exit 1
                             }
                         """).trim()
 
                         if (response == "NOT_FOUND") {
                             error("Change Request ${env.CR_ID} not found in ServiceNow.")
-                        } else if (response.startsWith("ERROR")) {
+                        } else if (response.isEmpty() || response.startsWith("ERROR")) {
                             error("Failed to query ServiceNow: ${response}")
                         }
 
                         // Parse JSON response and extract status and other details
                         def changeInfo = readJSON text: response
-                        env.CR_STATUS = changeInfo.status ?: 'unknown'
+                        env.CR_STATUS = changeInfo.state ?: 'unknown'
                         env.CR_SHORT_DESC = changeInfo.short_description ?: 'N/A'
                         echo "Found Change Request: ${env.CR_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
                     }
@@ -121,25 +123,27 @@ pipeline {
                             sleep(time: pollIntervalSeconds, unit: 'SECONDS')
                             elapsedTime += pollIntervalSeconds
 
-                            def query = "number=${env.CR_ID}"
-                            def snApiUrl = "\$env:SERVICENOW_ENDPOINT/api/now/table/\$env:SERVICENOW_TABLE?sysparm_query=${query}&sysparm_limit=1"
-
                             def response = powershell(returnStdout: true, script: """
-                                \$credPair = "\$env:SN_USER:\$env:SN_PASS"
-                                \$encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(\$credPair))
-                                \$headers = @{
-                                    "Authorization" = "Basic \$encodedCredentials"
-                                    "Accept" = "application/json"
-                                }
+                                \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                \$table = "\$env:SERVICENOW_TABLE"
+                                \$crId = "${env.CR_ID}"
+                                \$query = "number=\$crId"
+                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                                
+                                \$username = "\$env:SN_USER"
+                                \$password = "\$env:SN_PASS"
+                                \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
                                 try {
-                                    \$response = Invoke-RestMethod -Uri "${snApiUrl}" -Method Get -Headers \$headers -ErrorAction Stop
+                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
                                     if (\$response.result.Count -gt 0) {
                                         \$change = \$response.result[0]
                                         Write-Output \$change.state
                                     }
                                 } catch {
                                     Write-Error "ServiceNow API query failed: \$_"
+                                    exit 1
                                 }
                             """).trim()
 
@@ -201,25 +205,27 @@ pipeline {
                             sleep(time: pollIntervalSeconds, unit: 'SECONDS')
                             elapsedTime += pollIntervalSeconds
 
-                            def query = "number=${env.CR_ID}"
-                            def snApiUrl = "\$env:SERVICENOW_ENDPOINT/api/now/table/\$env:SERVICENOW_TABLE?sysparm_query=${query}&sysparm_limit=1"
-
                             def response = powershell(returnStdout: true, script: """
-                                \$credPair = "\$env:SN_USER:\$env:SN_PASS"
-                                \$encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(\$credPair))
-                                \$headers = @{
-                                    "Authorization" = "Basic \$encodedCredentials"
-                                    "Accept" = "application/json"
-                                }
+                                \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                \$table = "\$env:SERVICENOW_TABLE"
+                                \$crId = "${env.CR_ID}"
+                                \$query = "number=\$crId"
+                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                                
+                                \$username = "\$env:SN_USER"
+                                \$password = "\$env:SN_PASS"
+                                \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+                                \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
                                 try {
-                                    \$response = Invoke-RestMethod -Uri "${snApiUrl}" -Method Get -Headers \$headers -ErrorAction Stop
+                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
                                     if (\$response.result.Count -gt 0) {
                                         \$change = \$response.result[0]
                                         Write-Output \$change.state
                                     }
                                 } catch {
                                     Write-Error "ServiceNow API query failed: \$_"
+                                    exit 1
                                 }
                             """).trim()
 
