@@ -50,7 +50,9 @@ pipeline {
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$crId = "${env.CR_ID}"
-                            \$query = "number=\$crId"
+                            
+                            # URL encode the query parameter
+                            \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
                             \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
                             
                             \$username = "\$env:SN_USER"
@@ -131,7 +133,9 @@ pipeline {
                                 \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                 \$table = "\$env:SERVICENOW_TABLE"
                                 \$crId = "${env.CR_ID}"
-                                \$query = "number=\$crId"
+                                
+                                # URL encode the query parameter
+                                \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
                                 \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
@@ -217,7 +221,9 @@ pipeline {
                                 \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                 \$table = "\$env:SERVICENOW_TABLE"
                                 \$crId = "${env.CR_ID}"
-                                \$query = "number=\$crId"
+                                
+                                # URL encode the query parameter
+                                \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
                                 \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
