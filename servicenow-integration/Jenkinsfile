@@ -127,8 +127,16 @@ pipeline {
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$sysId = "${env.CR_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
-                            \$buildUrl = "${env.BUILD_URL}"
-                            \$message = "DBmaestro package ${env.CR_ID} created by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME}). Build URL: \$buildUrl. Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAME_RS}"
+                            \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                            \$overviewUrl = "\$buildUrl/overview"
+                            \$message = @"
+DBmaestro package ${env.CR_ID} created
+
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+
+Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAME_RS}
+"@
                             \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                             \$username = "\$env:SN_USER"
@@ -178,7 +186,15 @@ pipeline {
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$sysId = "${env.CR_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
-                            \$message = "DBmaestro precheck for package ${env.CR_ID} completed by Jenkins build ${env.BUILD_NUMBER} (${env.JOB_NAME})"
+                            \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                            \$overviewUrl = "\$buildUrl/overview"
+                            \$message = @"
+DBmaestro precheck completed
+
+Package: ${env.DBM_PACKAGE_NAME}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+"@
                             \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                             \$username = "\$env:SN_USER"
@@ -286,7 +302,15 @@ pipeline {
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.CR_SYS_ID}"
-                                    \$message = "Release Source upgrade succeeded for package ${env.CR_ID} on build ${env.BUILD_NUMBER}"
+                                    \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                    \$overviewUrl = "\$buildUrl/overview"
+                                    \$message = @"
+Release Source upgrade SUCCEEDED
+
+Package: ${env.DBM_PACKAGE_NAME}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+"@
                                     \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                                     \$username = "\$env:SN_USER"
@@ -321,7 +345,17 @@ pipeline {
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.CR_SYS_ID}"
-                                        \$message = "Release Source upgrade attempt FAILED for package ${env.CR_ID} on build ${env.BUILD_NUMBER}. Error: ${err}"
+                                        \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                        \$overviewUrl = "\$buildUrl/overview"
+                                        \$message = @"
+Release Source upgrade FAILED
+
+Package: ${env.DBM_PACKAGE_NAME}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+
+Error: ${err}
+"@
                                         \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                                         \$username = "\$env:SN_USER"
@@ -443,7 +477,15 @@ pipeline {
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.CR_SYS_ID}"
-                                    \$message = "Production upgrade succeeded for package ${env.CR_ID} on build ${env.BUILD_NUMBER}"
+                                    \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                    \$overviewUrl = "\$buildUrl/overview"
+                                    \$message = @"
+Production upgrade SUCCEEDED
+
+Package: ${env.DBM_PACKAGE_NAME}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+"@
                                     \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                                     \$username = "\$env:SN_USER"
@@ -477,7 +519,17 @@ pipeline {
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.CR_SYS_ID}"
-                                        \$message = "Production upgrade attempt FAILED for package ${env.CR_ID} on build ${env.BUILD_NUMBER}. Error: ${err}"
+                                        \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                        \$overviewUrl = "\$buildUrl/overview"
+                                        \$message = @"
+Production upgrade FAILED
+
+Package: ${env.DBM_PACKAGE_NAME}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: <a href='\$overviewUrl'>\$overviewUrl</a>
+
+Error: ${err}
+"@
                                         \$body = @{ work_notes = \$message } | ConvertTo-Json
 
                                         \$username = "\$env:SN_USER"
