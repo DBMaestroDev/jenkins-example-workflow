@@ -85,7 +85,8 @@ pipeline {
                         }
 
                         // Parse JSON response and extract status and other details
-                        def changeInfo = readJSON text: response
+                        def jsonSlurper = new groovy.json.JsonSlurper()
+                        def changeInfo = jsonSlurper.parseText(response)
                         env.CR_STATUS = changeInfo.state ?: 'unknown'
                         env.CR_SHORT_DESC = changeInfo.short_description ?: 'N/A'
                         echo "Found Change Request: ${env.CR_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
