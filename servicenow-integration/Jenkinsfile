@@ -29,42 +29,25 @@ pipeline {
     stages {
         stage('Validate Parameters') {
             steps {
-                script {
-                    if (!params.CHANGE_REQUEST_ID?.trim()) {
-                        error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
-                    }
-                    env.CR_ID = params.CHANGE_REQUEST_ID.trim()
-                    echo "Using Change Request ID: ${env.CR_ID}"
-
-                    // Check if another build for the same CR_ID is already running
-                    def otherBuildsRunning = false
-                    def currentBuildNumber = env.BUILD_NUMBER as Integer
-                    
-                    for (build in Jenkins.instance.getItemByFullName(env.JOB_NAME).builds) {
-                        if (build.isBuilding() && build.number != currentBuildNumber) {
-                            def crId = build.getEnvironment(null).get('CR_ID') ?: build.getBuildVariables()['CHANGE_REQUEST_ID']
-                            if (crId == env.CR_ID) {
-                                otherBuildsRunning = true
-                                echo "Another build (#${build.number}) is already running for CR_ID: ${env.CR_ID}"
-                                break
-                            }
+                lock(resource: "cr-${params.CHANGE_REQUEST_ID}", skipIfLocked: true) {
+                    script {
+                        if (!params.CHANGE_REQUEST_ID?.trim()) {
+                            error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
                         }
-                    }
-                    
-                    if (otherBuildsRunning) {
-                        error("Pipeline execution blocked: Another build for CR_ID ${env.CR_ID} is already running. Parallel executions for the same CR are not allowed.")
-                    }
+                        env.CR_ID = params.CHANGE_REQUEST_ID.trim()
+                        echo "Using Change Request ID: ${env.CR_ID}"
 
-                    // Set DBM_PACKAGE_NAME to CR_ID if not provided
-                    if (params.DBM_PACKAGE_NAME?.trim()) {
-                        env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
-                    } else {
-                        env.DBM_PACKAGE_NAME = env.CR_ID
-                    }
-                    echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
+                        // Set DBM_PACKAGE_NAME to CR_ID if not provided
+                        if (params.DBM_PACKAGE_NAME?.trim()) {
+                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        } else {
+                            env.DBM_PACKAGE_NAME = env.CR_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
 
-                    // Set build display name to the change request ID
-                    currentBuild.displayName = "${env.CR_ID}"
+                        // Set build display name to the change request ID
+                        currentBuild.displayName = "${env.CR_ID}"
+                    }
                 }
             }
         }
