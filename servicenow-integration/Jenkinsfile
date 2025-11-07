@@ -58,8 +58,12 @@ pipeline {
                             \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
                             \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
+                            \$headers = @{
+                                "Accept" = "application/json"
+                            }
+
                             try {
-                                \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
+                                \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Headers \$headers -ErrorAction Stop
                                 if (\$response.result.Count -gt 0) {
                                     \$change = \$response.result[0]
                                     Write-Output (\$change | ConvertTo-Json -Compress)
@@ -135,8 +139,12 @@ pipeline {
                                 \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
                                 \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
+                                \$headers = @{
+                                    "Accept" = "application/json"
+                                }
+
                                 try {
-                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
+                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Headers \$headers -ErrorAction Stop
                                     if (\$response.result.Count -gt 0) {
                                         \$change = \$response.result[0]
                                         Write-Output \$change.state
@@ -217,8 +225,12 @@ pipeline {
                                 \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
                                 \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
+                                \$headers = @{
+                                    "Accept" = "application/json"
+                                }
+
                                 try {
-                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Accept "application/json" -ErrorAction Stop
+                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Headers \$headers -ErrorAction Stop
                                     if (\$response.result.Count -gt 0) {
                                         \$change = \$response.result[0]
                                         Write-Output \$change.state
