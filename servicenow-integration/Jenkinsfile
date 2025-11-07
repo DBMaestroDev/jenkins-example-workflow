@@ -51,9 +51,9 @@ pipeline {
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$crId = "${env.CR_ID}"
                             
-                            # URL encode the query parameter
-                            \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
-                            \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                            # Build the URL with proper query encoding
+                            \$queryValue = [Uri]::EscapeDataString("number=\$crId")
+                            \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
                             
                             \$username = "\$env:SN_USER"
                             \$password = "\$env:SN_PASS"
@@ -134,9 +134,9 @@ pipeline {
                                 \$table = "\$env:SERVICENOW_TABLE"
                                 \$crId = "${env.CR_ID}"
                                 
-                                # URL encode the query parameter
-                                \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
-                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                                # Build the URL with proper query encoding
+                                \$queryValue = [Uri]::EscapeDataString("number=\$crId")
+                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
                                 \$password = "\$env:SN_PASS"
@@ -222,9 +222,9 @@ pipeline {
                                 \$table = "\$env:SERVICENOW_TABLE"
                                 \$crId = "${env.CR_ID}"
                                 
-                                # URL encode the query parameter
-                                \$query = [System.Web.HttpUtility]::UrlEncode("number=\$crId")
-                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$query&sysparm_limit=1"
+                                # Build the URL with proper query encoding
+                                \$queryValue = [Uri]::EscapeDataString("number=\$crId")
+                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
                                 \$password = "\$env:SN_PASS"
