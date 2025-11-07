@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'CHANGE_REQUEST_ID', defaultValue: '', description: 'ServiceNow Change Request ID (e.g., CHG0123456)')
+        string(name: 'CHANGE_REQUEST_ID', defaultValue: 'CHG0030002', description: 'ServiceNow Change Request ID (e.g., CHG0123456)')
         string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
     }
 
@@ -53,7 +53,7 @@ pipeline {
                             
                             # Build the URL with proper query encoding
                             \$queryValue = [Uri]::EscapeDataString("number=\$crId")
-                            \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
+                            \$url = "\$endpoint/api/now/table/\$table\`?sysparm_query=\$queryValue&sysparm_limit=1"
                             
                             \$username = "\$env:SN_USER"
                             \$password = "\$env:SN_PASS"
@@ -136,7 +136,7 @@ pipeline {
                                 
                                 # Build the URL with proper query encoding
                                 \$queryValue = [Uri]::EscapeDataString("number=\$crId")
-                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
+                                \$url = "\$endpoint/api/now/table/\$table\`?sysparm_query=\$queryValue&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
                                 \$password = "\$env:SN_PASS"
@@ -224,7 +224,7 @@ pipeline {
                                 
                                 # Build the URL with proper query encoding
                                 \$queryValue = [Uri]::EscapeDataString("number=\$crId")
-                                \$url = "\$endpoint/api/now/table/\$table?sysparm_query=\$queryValue&sysparm_limit=1"
+                                \$url = "\$endpoint/api/now/table/\$table\`?sysparm_query=\$queryValue&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
                                 \$password = "\$env:SN_PASS"
