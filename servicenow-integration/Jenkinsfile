@@ -136,7 +136,7 @@ pipeline {
                             \$sysId = "${env.CR_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                            \$overviewUrl = "\$buildUrl/overview"
+                            \$overviewUrl = "\$buildUrl/pipeline-overview"
                             \$message = @"
 DBmaestro package ${env.CR_ID} created
 
@@ -195,7 +195,7 @@ Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAM
                             \$sysId = "${env.CR_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                            \$overviewUrl = "\$buildUrl/overview"
+                            \$overviewUrl = "\$buildUrl/pipeline-overview"
                             \$message = @"
 DBmaestro precheck completed
 
@@ -311,7 +311,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.CR_SYS_ID}"
                                     \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                                    \$overviewUrl = "\$buildUrl/overview"
+                                    \$overviewUrl = "\$buildUrl/pipeline-overview"
                                     \$message = @"
 Release Source upgrade SUCCEEDED
 
@@ -354,7 +354,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.CR_SYS_ID}"
                                         \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                                        \$overviewUrl = "\$buildUrl/overview"
+                                        \$overviewUrl = "\$buildUrl/pipeline-overview"
                                         \$message = @"
 Release Source upgrade FAILED
 
@@ -486,7 +486,7 @@ Error: ${err}
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.CR_SYS_ID}"
                                     \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                                    \$overviewUrl = "\$buildUrl/overview"
+                                    \$overviewUrl = "\$buildUrl/pipeline-overview"
                                     \$message = @"
 Production upgrade SUCCEEDED
 
@@ -528,7 +528,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.CR_SYS_ID}"
                                         \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
-                                        \$overviewUrl = "\$buildUrl/overview"
+                                        \$overviewUrl = "\$buildUrl/pipeline-overview"
                                         \$message = @"
 Production upgrade FAILED
 
