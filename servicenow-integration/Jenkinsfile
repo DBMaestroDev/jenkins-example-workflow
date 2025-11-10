@@ -5,6 +5,7 @@ pipeline {
         string(name: 'CHANGE_REQUEST_ID', defaultValue: 'CHG0030002', description: 'ServiceNow Change Request ID (e.g., CHG0123456)')
         string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
         string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to CHANGE_REQUEST_ID)')
+        booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
     }
 
     environment {
@@ -115,6 +116,9 @@ pipeline {
         }
 
         stage('Create Package in DBmaestro') {
+            when {
+                expression { !params.PACKAGE_ALREADY_EXIST }
+            }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
@@ -126,6 +130,9 @@ pipeline {
 
         // Post a work note to ServiceNow that the DBmaestro package was created
         stage('Post Comment: Package Created') {
+            when {
+                expression { !params.PACKAGE_ALREADY_EXIST }
+            }
             steps {
                 script {
                     if (env.CR_SYS_ID?.trim()) {
