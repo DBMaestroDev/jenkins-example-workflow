@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
+        choice(name: 'DBM_PROJECT_NAME', choices: ['DemoProject', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
     }
 
     environment {
