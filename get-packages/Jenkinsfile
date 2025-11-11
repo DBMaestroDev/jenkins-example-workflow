@@ -1,0 +1,47 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
+        string(name: 'DBM_AGENT_ENDPOINT', defaultValue: 'DELL-NICOLAST:8017', description: 'DBmaestro agent endpoint')
+        string(name: 'DBM_JAR_PATH', defaultValue: 'DBmaestroAgent.jar', description: 'Path to DBmaestroAgent.jar on the agent')
+    }
+
+    stages {
+        stage('Get Packages') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    // Run DBmaestroAgent and capture output
+                    powershell """
+                    \$jar = "${env.DBM_JAR_PATH}"
+                    \$project = "${params.DBM_PROJECT_NAME}"
+                    \$server = "${params.DBM_AGENT_ENDPOINT}"
+                    \$outLog = "agent-output.log"
+                    \$outFile = "packages.json"
+
+                    Write-Output "Running DBmaestroAgent to get packages..."
+                    & java -jar "\$jar" -GetPackages -ProjectName "\$project" -FilePath "\$outFile" -Server "\$server" -UseSSL True -AuthType DBmaestroAccount -UserName "${DBM_USER}" -Password "${DBM_PASS}" 2>&1 | Tee-Object -FilePath \$outLog
+                    """
+
+                    // Run extractor against packages.json if it exists, otherwise against the log
+                    powershell """
+                    \$outFile = "packages.json"
+                    if (Test-Path \$outFile) {
+                        Write-Output "Packages file found: \$outFile"
+                        & powershell -NoProfile -ExecutionPolicy Bypass -File .\\get-packages\\extract-packages.ps1 -FilePath \$outFile
+                    } else {
+                        Write-Output "packages.json not found; extracting JSON from log..."
+                        & powershell -NoProfile -ExecutionPolicy Bypass -File .\\get-packages\\extract-packages.ps1 -FilePath agent-output.log
+                    }
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'packages.json,agent-output.log', allowEmptyArchive: true
+        }
+    }
+}
