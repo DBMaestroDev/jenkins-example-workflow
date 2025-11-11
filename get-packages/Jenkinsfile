@@ -25,13 +25,15 @@ pipeline {
 
                     // Run extractor against packages.json if it exists, otherwise against the log
                     powershell """
+                    \$scriptPath = Join-Path \$PWD "get-packages\\extract-packages.ps1"
                     \$outFile = "packages.json"
+                    
                     if (Test-Path \$outFile) {
                         Write-Output "Packages file found: \$outFile"
-                        & powershell -NoProfile -ExecutionPolicy Bypass -File .\\get-packages\\extract-packages.ps1 -FilePath \$outFile
+                        & powershell -NoProfile -ExecutionPolicy Bypass -File \$scriptPath -FilePath \$outFile
                     } else {
                         Write-Output "packages.json not found; extracting JSON from log..."
-                        & powershell -NoProfile -ExecutionPolicy Bypass -File .\\get-packages\\extract-packages.ps1 -FilePath agent-output.log
+                        & powershell -NoProfile -ExecutionPolicy Bypass -File \$scriptPath -FilePath agent-output.log
                     }
                     """
                 }
