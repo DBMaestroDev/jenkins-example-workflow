@@ -3,8 +3,13 @@ pipeline {
 
     parameters {
         string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
-        string(name: 'DBM_AGENT_ENDPOINT', defaultValue: 'DELL-NICOLAST:8017', description: 'DBmaestro agent endpoint')
-        string(name: 'DBM_JAR_PATH', defaultValue: 'DBmaestroAgent.jar', description: 'Path to DBmaestroAgent.jar on the agent')
+    }
+
+    environment {
+        // DBmaestro configuration (same as servicenow-integration pipeline)
+        DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+        DBM_AGENT_ENDPOINT = 'DELL-NICOLAST:8017'
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
     }
 
     stages {
@@ -12,13 +17,13 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    \$jar = "${params.DBM_JAR_PATH}"
+                    \$jar = "\$env:DBM_JAR_PATH"
                     \$project = "${params.DBM_PROJECT_NAME}"
-                    \$server = "${params.DBM_AGENT_ENDPOINT}"
+                    \$server = "\$env:DBM_AGENT_ENDPOINT"
                     \$outFile = "packages.json"
 
                     Write-Output "Running DBmaestroAgent -GetPackages..."
-                    & java -jar "\$jar" -GetPackages -ProjectName "\$project" -FilePath "\$outFile" -Server "\$server" -UseSSL True -AuthType DBmaestroAccount -UserName "${DBM_USER}" -Password "${DBM_PASS}"
+                    & java -jar "\$jar" -GetPackages -ProjectName "\$project" -FilePath "\$outFile" -Server "\$server" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "${DBM_USER}" -Password "${DBM_PASS}"
                     
                     if (Test-Path \$outFile) {
                         Write-Output "Successfully created: \$outFile"
