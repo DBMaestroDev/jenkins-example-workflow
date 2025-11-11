@@ -3,7 +3,7 @@ pipeline {
 
     parameters {
         string(name: 'CHANGE_REQUEST_ID', defaultValue: 'CHG0030002', description: 'ServiceNow Change Request ID (e.g., CHG0123456)')
-        string(name: 'DBM_PROJECT_NAME', defaultValue: 'DemoProject', description: 'DBmaestro project name')
+        choice(name: 'DBM_PROJECT_NAME', choices: ['DemoProject', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
         string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to CHANGE_REQUEST_ID)')
         booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
     }
