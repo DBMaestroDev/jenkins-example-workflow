@@ -8,42 +8,49 @@ pipeline {
     }
 
     stages {
-        stage('Get Packages') {
+        stage('Get Packages from DBmaestro') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
-                    // Run DBmaestroAgent and capture output
                     powershell """
-                    \$jar = "${env.DBM_JAR_PATH}"
+                    \$jar = "${params.DBM_JAR_PATH}"
                     \$project = "${params.DBM_PROJECT_NAME}"
                     \$server = "${params.DBM_AGENT_ENDPOINT}"
-                    \$outLog = "agent-output.log"
                     \$outFile = "packages.json"
 
-                    Write-Output "Running DBmaestroAgent to get packages..."
-                    & java -jar "\$jar" -GetPackages -ProjectName "\$project" -FilePath "\$outFile" -Server "\$server" -UseSSL True -AuthType DBmaestroAccount -UserName "${DBM_USER}" -Password "${DBM_PASS}" 2>&1 | Tee-Object -FilePath \$outLog
-                    """
-
-                    // Run extractor against packages.json if it exists, otherwise against the log
-                    powershell """
-                    \$scriptPath = Join-Path \$PWD "get-packages\\extract-packages.ps1"
-                    \$outFile = "packages.json"
+                    Write-Output "Running DBmaestroAgent -GetPackages..."
+                    & java -jar "\$jar" -GetPackages -ProjectName "\$project" -FilePath "\$outFile" -Server "\$server" -UseSSL True -AuthType DBmaestroAccount -UserName "${DBM_USER}" -Password "${DBM_PASS}"
                     
                     if (Test-Path \$outFile) {
-                        Write-Output "Packages file found: \$outFile"
-                        & powershell -NoProfile -ExecutionPolicy Bypass -File \$scriptPath -FilePath \$outFile
+                        Write-Output "Successfully created: \$outFile"
                     } else {
-                        Write-Output "packages.json not found; extracting JSON from log..."
-                        & powershell -NoProfile -ExecutionPolicy Bypass -File \$scriptPath -FilePath agent-output.log
+                        throw "Failed to create packages.json"
                     }
                     """
                 }
+            }
+        }
+
+        stage('Parse and Display Packages') {
+            steps {
+                powershell """
+                \$scriptPath = Join-Path \$PWD "get-packages\\extract-packages.ps1"
+                \$packagesFile = "packages.json"
+                
+                if (-not (Test-Path \$packagesFile)) {
+                    throw "packages.json not found. GetPackages stage may have failed."
+                }
+                
+                Write-Output "Parsing packages from: \$packagesFile"
+                & powershell -NoProfile -ExecutionPolicy Bypass -File \$scriptPath -FilePath \$packagesFile
+                """
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'packages.json,agent-output.log', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'packages.json', allowEmptyArchive: true
         }
     }
 }
+
