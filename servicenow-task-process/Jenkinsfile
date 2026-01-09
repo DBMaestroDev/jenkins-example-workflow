@@ -113,7 +113,7 @@ pipeline {
                             error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
+                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Parent: ${env.TASK_PARENT_DISPLAY_VALUE} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
