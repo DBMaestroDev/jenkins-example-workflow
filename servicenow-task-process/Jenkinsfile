@@ -2,16 +2,16 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'CHANGE_REQUEST_ID', defaultValue: 'CHG0030002', description: 'ServiceNow Change Request ID (e.g., CHG0123456)')
+        string(name: 'TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task ID (e.g., TASK0000001)')
         choice(name: 'DBM_PROJECT_NAME', choices: ['Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
-        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to CHANGE_REQUEST_ID)')
+        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to TASK_ID)')
         booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
     }
 
     environment {
         // ServiceNow endpoint and credentials
-        SERVICENOW_ENDPOINT = 'https://dev317594.service-now.com'
-        SERVICENOW_TABLE = 'change_request'
+        SERVICENOW_ENDPOINT = 'dev191348.service-now.com'
+        SERVICENOW_TABLE = 'task'
 
         // DBmaestro configuration
         DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
@@ -30,44 +30,46 @@ pipeline {
     stages {
         stage('Validate Parameters') {
             steps {
-                lock(resource: "cr-${params.CHANGE_REQUEST_ID}", skipIfLocked: true) {
+                lock(resource: "task-${params.TASK_ID}", skipIfLocked: true) {
                     script {
-                        if (!params.CHANGE_REQUEST_ID?.trim()) {
-                            error("CHANGE_REQUEST_ID parameter is required. Provide a ServiceNow change request ID.")
+                        if (!params.TASK_ID?.trim()) {
+                            error("TASK_ID parameter is required. Provide a ServiceNow Task ID.")
                         }
-                        env.CR_ID = params.CHANGE_REQUEST_ID.trim()
-                        echo "Using Change Request ID: ${env.CR_ID}"
+                        env.TASK_ID = params.TASK_ID.trim()
+                        echo "Using Task ID: ${env.TASK_ID}"
 
-                        // Set DBM_PACKAGE_NAME to CR_ID if not provided
+                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
                         if (params.DBM_PACKAGE_NAME?.trim()) {
                             env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        } else if (env.TASK_PARENT_DISPLAY_VALUE?.trim()) {
+                            env.DBM_PACKAGE_NAME = env.TASK_PARENT_DISPLAY_VALUE.trim()
                         } else {
-                            env.DBM_PACKAGE_NAME = env.CR_ID
+                            env.DBM_PACKAGE_NAME = env.TASK_ID
                         }
                         echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
 
-                        // Set build display name to the change request ID
-                        currentBuild.displayName = "${env.CR_ID}"
+                        // Set build display name to the Task ID
+                        currentBuild.displayName = "${env.TASK_ID}"
                     }
                 }
             }
         }
 
-        stage('Verify Change Request Exists') {
+        stage('Verify Task ID Exists') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                        echo "Querying ServiceNow for change request: ${env.CR_ID}"
+                        echo "Querying ServiceNow for Task ID: ${env.TASK_ID}"
 
                         def response = powershell(returnStdout: true, script: """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$crId = "${env.CR_ID}"
+                            \$taskId = "${env.TASK_ID}"
                             
                             # Build the URL with proper query encoding and field restriction
-                            \$queryValue = [Uri]::EscapeDataString("number=\$crId")
-                            \$fieldsValue = [Uri]::EscapeDataString("number,state,short_description,sys_id")
-                            \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_fields=" + \$fieldsValue + "&sysparm_limit=1"
+                            \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
+                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,parent")
+                            \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_fields=" + \$fieldsValue + "&sysparm_limit=1&sysparm_display_value=true"
                             
                             \$username = "\$env:SN_USER"
                             \$password = "\$env:SN_PASS"
@@ -93,24 +95,25 @@ pipeline {
                         """).trim()
 
                         if (response == "NOT_FOUND") {
-                            error("Change Request ${env.CR_ID} not found in ServiceNow.")
+                            error("Task ID ${env.TASK_ID} not found in ServiceNow.")
                         } else if (response.isEmpty() || response.startsWith("ERROR")) {
                             error("Failed to query ServiceNow: ${response}")
                         }
 
-                        // Parse JSON response and extract status, sys_id and other details
+                        // Parse JSON response and extract status, sys_id, parent info and other details
                         def jsonSlurper = new groovy.json.JsonSlurper()
                         def changeInfo = jsonSlurper.parseText(response)
-                        env.CR_STATUS = changeInfo.state ?: 'unknown'
-                        env.CR_SHORT_DESC = changeInfo.short_description ?: 'N/A'
-                        env.CR_SYS_ID = changeInfo.sys_id ?: ''
+                        env.TASK_STATUS = changeInfo.state ?: 'unknown'
+                        env.TASK_SHORT_DESC = changeInfo.short_description ?: 'N/A'
+                        env.TASK_SYS_ID = changeInfo.sys_id ?: ''
+                        env.TASK_PARENT_DISPLAY_VALUE = changeInfo.parent?.display_value ?: ''
                         
-                        // Check if change request is in closed state (state = 3)
-                        if (env.CR_STATUS == "3") {
-                            error("Change Request ${env.CR_ID} is in closed state and cannot be processed.")
+                        // Check if Task ID is in closed state (state = 3)
+                        if (env.TASK_STATUS == "3") {
+                            error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Change Request: ${env.CR_ID} | sys_id: ${env.CR_SYS_ID} | Status: ${env.CR_STATUS} | Description: ${env.CR_SHORT_DESC}"
+                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
@@ -123,7 +126,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.CR_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -136,17 +139,17 @@ pipeline {
             }
             steps {
                 script {
-                    if (env.CR_SYS_ID?.trim()) {
+                    if (env.TASK_SYS_ID?.trim()) {
                         withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                             powershell """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$sysId = "${env.CR_SYS_ID}"
+                            \$sysId = "${env.TASK_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                             \$overviewUrl = "\$buildUrl/pipeline-overview"
                             \$message = @"
-DBmaestro package ${env.CR_ID} created
+DBmaestro package ${env.TASK_ID} created
 
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
@@ -175,7 +178,7 @@ Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAM
                             """
                         }
                     } else {
-                        echo "Skipping ServiceNow comment post: CR sys_id not available"
+                        echo "Skipping ServiceNow comment post: Task sys_id not available"
                     }
                 }
             }
@@ -195,12 +198,12 @@ Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAM
         stage('Post Comment: Precheck Completed') {
             steps {
                 script {
-                    if (env.CR_SYS_ID?.trim()) {
+                    if (env.TASK_SYS_ID?.trim()) {
                         withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                             powershell """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$sysId = "${env.CR_SYS_ID}"
+                            \$sysId = "${env.TASK_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                             \$overviewUrl = "\$buildUrl/pipeline-overview"
@@ -232,7 +235,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             """
                         }
                     } else {
-                        echo "Skipping ServiceNow comment post: CR sys_id not available"
+                        echo "Skipping ServiceNow comment post: Task sys_id not available"
                     }
                 }
             }
@@ -242,7 +245,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                        echo "Waiting for change request ${env.CR_ID} to reach 'scheduled' status..."
+                        echo "Waiting for Task ID ${env.TASK_ID} to reach 'scheduled' status..."
 
                         def maxWaitSeconds = Integer.parseInt(env.MAX_WAIT_TIME)
                         def pollIntervalSeconds = Integer.parseInt(env.POLL_INTERVAL)
@@ -256,10 +259,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             def response = powershell(returnStdout: true, script: """
                                 \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                 \$table = "\$env:SERVICENOW_TABLE"
-                                \$crId = "${env.CR_ID}"
+                                \$taskId = "${env.TASK_ID}"
                                 
                                 # Build the URL with proper query encoding
-                                \$queryValue = [Uri]::EscapeDataString("number=\$crId")
+                                \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
                                 \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
@@ -285,14 +288,14 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 
                             if (response == "-2" || response.contains("-2")) {
                                 isScheduled = true
-                                echo "Change request reached 'scheduled' status."
+                                echo "Task ID reached 'scheduled' status."
                             } else {
                                 echo "Current status: ${response} | Elapsed time: ${elapsedTime}s / ${maxWaitSeconds}s"
                             }
                         }
 
                         if (!isScheduled) {
-                            error("Timeout waiting for change request to be scheduled. Max wait time: ${env.MAX_WAIT_TIME}s")
+                            error("Timeout waiting for Task ID to be scheduled. Max wait time: ${env.MAX_WAIT_TIME}s")
                         }
                     }
                 }
@@ -310,14 +313,14 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                 java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                 """
                             }
-                            echo "Release Source upgrade succeeded for package ${env.CR_ID}"
+                            echo "Release Source upgrade succeeded for package ${env.TASK_ID}"
                             // Post success note to ServiceNow (best-effort)
-                            if (env.CR_SYS_ID?.trim()) {
+                            if (env.TASK_SYS_ID?.trim()) {
                                 withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                     powershell """
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
-                                    \$sysId = "${env.CR_SYS_ID}"
+                                    \$sysId = "${env.TASK_SYS_ID}"
                                     \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                                     \$overviewUrl = "\$buildUrl/pipeline-overview"
                                     \$message = @"
@@ -348,19 +351,19 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                     """
                                 }
                             } else {
-                                echo "Skipping ServiceNow success comment: CR sys_id not available"
+                                echo "Skipping ServiceNow success comment: Task sys_id not available"
                             }
                             keepTrying = false
                         } catch (err) {
                             echo "Upgrade attempt failed: ${err}"
                             // Post a failure note to ServiceNow (non-fatal for comment posting)
                             try {
-                                if (env.CR_SYS_ID?.trim()) {
+                                if (env.TASK_SYS_ID?.trim()) {
                                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                         powershell """
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
-                                        \$sysId = "${env.CR_SYS_ID}"
+                                        \$sysId = "${env.TASK_SYS_ID}"
                                         \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                                         \$overviewUrl = "\$buildUrl/pipeline-overview"
                                         \$message = @"
@@ -393,13 +396,13 @@ Error: ${err}
                                         """
                                     }
                                 } else {
-                                    echo "Skipping ServiceNow failure comment: CR sys_id not available"
+                                    echo "Skipping ServiceNow failure comment: Task sys_id not available"
                                 }
                             } catch (postErr) {
                                 echo "Posting failure note also failed: ${postErr}"
                             }
 
-                            def action = input message: "Upgrade failed for package ${env.CR_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            def action = input message: "Upgrade failed for package ${env.TASK_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Upgrade aborted by user after failure.")
                             } else {
@@ -415,7 +418,7 @@ Error: ${err}
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                        echo "Waiting for change request ${env.CR_ID} to reach 'implement' status..."
+                        echo "Waiting for Task ID ${env.TASK_ID} to reach 'implement' status..."
 
                         def maxWaitSeconds = Integer.parseInt(env.MAX_WAIT_TIME)
                         def pollIntervalSeconds = Integer.parseInt(env.POLL_INTERVAL)
@@ -429,10 +432,10 @@ Error: ${err}
                             def response = powershell(returnStdout: true, script: """
                                 \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                 \$table = "\$env:SERVICENOW_TABLE"
-                                \$crId = "${env.CR_ID}"
+                                \$taskId = "${env.TASK_ID}"
                                 
                                 # Build the URL with proper query encoding
-                                \$queryValue = [Uri]::EscapeDataString("number=\$crId")
+                                \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
                                 \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_limit=1"
                                 
                                 \$username = "\$env:SN_USER"
@@ -458,14 +461,14 @@ Error: ${err}
 
                             if (response == "-1" || response.contains("-1")) {
                                 isImplemented = true
-                                echo "Change request reached 'implement' status."
+                                echo "Task ID reached 'implement' status."
                             } else {
                                 echo "Current status: ${response} | Elapsed time: ${elapsedTime}s / ${maxWaitSeconds}s"
                             }
                         }
 
                         if (!isImplemented) {
-                            error("Timeout waiting for change request to be implemented. Max wait time: ${env.MAX_WAIT_TIME}s")
+                            error("Timeout waiting for Task ID to be implemented. Max wait time: ${env.MAX_WAIT_TIME}s")
                         }
                     }
                 }
@@ -483,16 +486,16 @@ Error: ${err}
                                 java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                 """
                             }
-                            echo "Production upgrade succeeded for package ${env.CR_ID}"
+                            echo "Production upgrade succeeded for package ${env.TASK_ID}"
                             keepTrying = false
                         
                             // Post success note to ServiceNow (best-effort)
-                            if (env.CR_SYS_ID?.trim()) {
+                            if (env.TASK_SYS_ID?.trim()) {
                                 withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                     powershell """
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
-                                    \$sysId = "${env.CR_SYS_ID}"
+                                    \$sysId = "${env.TASK_SYS_ID}"
                                     \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                                     \$overviewUrl = "\$buildUrl/pipeline-overview"
                                     \$message = @"
@@ -523,18 +526,18 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                     """
                                 }
                             } else {
-                                echo "Skipping ServiceNow success comment: CR sys_id not available"
+                                echo "Skipping ServiceNow success comment: Task sys_id not available"
                             }
                         } catch (err) {
                             echo "Production upgrade attempt failed: ${err}"
                             // Post a failure note to ServiceNow (best-effort)
                             try {
-                                if (env.CR_SYS_ID?.trim()) {
+                                if (env.TASK_SYS_ID?.trim()) {
                                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                         powershell """
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
-                                        \$sysId = "${env.CR_SYS_ID}"
+                                        \$sysId = "${env.TASK_SYS_ID}"
                                         \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                                         \$overviewUrl = "\$buildUrl/pipeline-overview"
                                         \$message = @"
@@ -567,13 +570,13 @@ Error: ${err}
                                         """
                                     }
                                 } else {
-                                    echo "Skipping ServiceNow failure comment: CR sys_id not available"
+                                    echo "Skipping ServiceNow failure comment: Task sys_id not available"
                                 }
                             } catch (postErr) {
                                 echo "Posting failure note also failed: ${postErr}"
                             }
 
-                            def action = input message: "Production upgrade failed for package ${env.CR_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            def action = input message: "Production upgrade failed for package ${env.TASK_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Production upgrade aborted by user after failure.")
                             } else {
@@ -588,13 +591,13 @@ Error: ${err}
 
     post {
         always {
-            echo "Completed ServiceNow change integration pipeline. CR_ID=${env.CR_ID} | Final Status=${env.CR_STATUS}"
+            echo "Completed ServiceNow change integration pipeline. TASK_ID=${env.TASK_ID} | Final Status=${env.TASK_STATUS}"
         }
         success {
-            echo "Successfully deployed change request ${env.CR_ID} through all environments."
+            echo "Successfully deployed Task ID ${env.TASK_ID} through all environments."
         }
         failure {
-            echo "Pipeline failed for change request ${env.CR_ID}. Review logs for details."
+            echo "Pipeline failed for Task ID ${env.TASK_ID}. Review logs for details."
         }
     }
 }

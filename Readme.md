@@ -53,12 +53,6 @@ How to use
 Security notes
 - Never commit DBmaestro usernames, passwords, tokens, or other secrets to source control. Use Jenkins Credentials (username/password and secret text) and reference them in the pipeline via `withCredentials`. The example pipelines are already written to use a `dbm_credentials` username/password credential and a `gh_user_token` for Git.
 
-Troubleshooting & tips
-- If the commit search fails to find a TaskID even though one exists, ensure the Jenkins agent has fetched the remote refs (the pipelines run `git fetch --all --prune` before searching).
-- For large repositories the `git log --all` search can be slow; consider limiting searches to specific branches if performance becomes an issue.
-- If you want `enact-test2` to validate TaskID against file contents (not commit messages), open an issue or request and I can update the verification step to search files instead.
-
-If you'd like, I can also add a small section with example parameter values and a sample run output. Want that next?
 
 ---
 Generated: updated to document `enact-test` and `enact-test2` pipeline behaviors and required Jenkins configuration.
