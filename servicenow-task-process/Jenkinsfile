@@ -38,16 +38,6 @@ pipeline {
                         env.TASK_ID = params.TASK_ID.trim()
                         echo "Using Task ID: ${env.TASK_ID}"
 
-                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
-                        if (params.DBM_PACKAGE_NAME?.trim()) {
-                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
-                        } else if (env.TASK_PARENT_DISPLAY_VALUE?.trim()) {
-                            env.DBM_PACKAGE_NAME = env.TASK_PARENT_DISPLAY_VALUE.trim()
-                        } else {
-                            env.DBM_PACKAGE_NAME = env.TASK_ID
-                        }
-                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
-
                         // Set build display name to the Task ID
                         currentBuild.displayName = "${env.TASK_ID}"
                     }
@@ -107,6 +97,16 @@ pipeline {
                         env.TASK_SHORT_DESC = changeInfo.short_description ?: 'N/A'
                         env.TASK_SYS_ID = changeInfo.sys_id ?: ''
                         env.TASK_PARENT_DISPLAY_VALUE = changeInfo.parent?.display_value ?: ''
+                        
+                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
+                        if (params.DBM_PACKAGE_NAME?.trim()) {
+                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        } else if (env.TASK_PARENT_DISPLAY_VALUE?.trim()) {
+                            env.DBM_PACKAGE_NAME = env.TASK_PARENT_DISPLAY_VALUE.trim()
+                        } else {
+                            env.DBM_PACKAGE_NAME = env.TASK_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
                         
                         // Check if Task ID is in closed state (state = 3)
                         if (env.TASK_STATUS == "3") {
