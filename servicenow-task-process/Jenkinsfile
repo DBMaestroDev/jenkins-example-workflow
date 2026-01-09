@@ -10,7 +10,7 @@ pipeline {
 
     environment {
         // ServiceNow endpoint and credentials
-        SERVICENOW_ENDPOINT = 'dev191348.service-now.com'
+        SERVICENOW_ENDPOINT = 'https://dev191348.service-now.com'
         SERVICENOW_TABLE = 'task'
 
         // DBmaestro configuration
