@@ -92,11 +92,11 @@ pipeline {
 
                         // Parse JSON response and extract status, sys_id, parent info and other details
                         def jsonSlurper = new groovy.json.JsonSlurper()
-                        def changeInfo = jsonSlurper.parseText(response)
-                        env.TASK_STATUS = changeInfo.state ?: 'unknown'
-                        env.TASK_SHORT_DESC = changeInfo.short_description ?: 'N/A'
-                        env.TASK_SYS_ID = changeInfo.sys_id ?: ''
-                        env.TASK_PARENT_DISPLAY_VALUE = changeInfo.parent?.display_value ?: ''
+                        def taskInfo = jsonSlurper.parseText(response)
+                        env.TASK_STATUS = taskInfo.state ?: 'unknown'
+                        env.TASK_SHORT_DESC = taskInfo.short_description ?: 'N/A'
+                        env.TASK_SYS_ID = taskInfo.sys_id ?: ''
+                        env.TASK_PARENT_DISPLAY_VALUE = taskInfo.parent?.display_value ?: ''
                         
                         // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
                         if (params.DBM_PACKAGE_NAME?.trim()) {
@@ -108,8 +108,8 @@ pipeline {
                         }
                         echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
                         
-                        // Check if Task ID is in closed state (state = 3)
-                        if (env.TASK_STATUS == "3") {
+                        // Check if Task ID is in closed state (state contains "Closed")
+                        if (env.TASK_STATUS?.contains("Closed")) {
                             error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
                         }
                         
