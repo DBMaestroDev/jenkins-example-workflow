@@ -4,7 +4,7 @@ pipeline {
     parameters {
         string(name: 'TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task ID (e.g., TASK0000001)')
         choice(name: 'DBM_PROJECT_NAME', choices: ['Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
-        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to TASK_ID)')
+        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to Request Item ID)')
         booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
     }
 
@@ -126,7 +126,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.TASK_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.DBM_PACKAGE_NAME}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -149,7 +149,7 @@ pipeline {
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                             \$overviewUrl = "\$buildUrl/pipeline-overview"
                             \$message = @"
-DBmaestro package ${env.TASK_ID} created
+DBmaestro package ${env.DBM_PACKAGE_NAME} created
 
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
