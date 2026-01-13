@@ -241,18 +241,18 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
             }
         }
 
-        stage('Wait for Change to be Scheduled') {
+        stage('Wait for Task to be in "Work in Progress" state') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                        echo "Waiting for Task ID ${env.TASK_ID} to reach 'scheduled' status..."
+                        echo "Waiting for Task ID ${env.TASK_ID} to reach 'Work in Progress' status..."
 
                         def maxWaitSeconds = Integer.parseInt(env.MAX_WAIT_TIME)
                         def pollIntervalSeconds = Integer.parseInt(env.POLL_INTERVAL)
                         def elapsedTime = 0
-                        def isScheduled = false
+                        def isWorkInProgress = false
 
-                        while (elapsedTime < maxWaitSeconds && !isScheduled) {
+                        while (elapsedTime < maxWaitSeconds && !isWorkInProgress) {
                             sleep(time: pollIntervalSeconds, unit: 'SECONDS')
                             elapsedTime += pollIntervalSeconds
 
@@ -287,15 +287,15 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             """).trim()
 
                             if (response == "-2" || response.contains("-2")) {
-                                isScheduled = true
-                                echo "Task ID reached 'scheduled' status."
+                                isWorkInProgress = true
+                                echo "Task ID reached 'Work in Progress' status."
                             } else {
                                 echo "Current status: ${response} | Elapsed time: ${elapsedTime}s / ${maxWaitSeconds}s"
                             }
                         }
 
-                        if (!isScheduled) {
-                            error("Timeout waiting for Task ID to be scheduled. Max wait time: ${env.MAX_WAIT_TIME}s")
+                        if (!isWorkInProgress) {
+                            error("Timeout waiting for Task ID to be in 'Work in Progress' state. Max wait time: ${env.MAX_WAIT_TIME}s")
                         }
                     }
                 }
@@ -414,66 +414,66 @@ Error: ${err}
             }
         }
 
-        stage('Wait for Change to be Implemented') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                        echo "Waiting for Task ID ${env.TASK_ID} to reach 'implement' status..."
+        // stage('Wait for Change to be Implemented') {
+        //     steps {
+        //         script {
+        //             withCredentials([usernamePassword(credentialsId: 'servicenow-api-creds', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
+        //                 echo "Waiting for Task ID ${env.TASK_ID} to reach 'implement' status..."
 
-                        def maxWaitSeconds = Integer.parseInt(env.MAX_WAIT_TIME)
-                        def pollIntervalSeconds = Integer.parseInt(env.POLL_INTERVAL)
-                        def elapsedTime = 0
-                        def isImplemented = false
+        //                 def maxWaitSeconds = Integer.parseInt(env.MAX_WAIT_TIME)
+        //                 def pollIntervalSeconds = Integer.parseInt(env.POLL_INTERVAL)
+        //                 def elapsedTime = 0
+        //                 def isImplemented = false
 
-                        while (elapsedTime < maxWaitSeconds && !isImplemented) {
-                            sleep(time: pollIntervalSeconds, unit: 'SECONDS')
-                            elapsedTime += pollIntervalSeconds
+        //                 while (elapsedTime < maxWaitSeconds && !isImplemented) {
+        //                     sleep(time: pollIntervalSeconds, unit: 'SECONDS')
+        //                     elapsedTime += pollIntervalSeconds
 
-                            def response = powershell(returnStdout: true, script: """
-                                \$endpoint = "\$env:SERVICENOW_ENDPOINT"
-                                \$table = "\$env:SERVICENOW_TABLE"
-                                \$taskId = "${env.TASK_ID}"
+        //                     def response = powershell(returnStdout: true, script: """
+        //                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+        //                         \$table = "\$env:SERVICENOW_TABLE"
+        //                         \$taskId = "${env.TASK_ID}"
                                 
-                                # Build the URL with proper query encoding
-                                \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
-                                \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_limit=1"
+        //                         # Build the URL with proper query encoding
+        //                         \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
+        //                         \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_limit=1"
                                 
-                                \$username = "\$env:SN_USER"
-                                \$password = "\$env:SN_PASS"
-                                \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
-                                \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
+        //                         \$username = "\$env:SN_USER"
+        //                         \$password = "\$env:SN_PASS"
+        //                         \$securePassword = ConvertTo-SecureString \$password -AsPlainText -Force
+        //                         \$credential = New-Object System.Management.Automation.PSCredential(\$username, \$securePassword)
 
-                                \$headers = @{
-                                    "Accept" = "application/json"
-                                }
+        //                         \$headers = @{
+        //                             "Accept" = "application/json"
+        //                         }
 
-                                try {
-                                    \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Headers \$headers -ErrorAction Stop
-                                    if (\$response.result.Count -gt 0) {
-                                        \$change = \$response.result[0]
-                                        Write-Output \$change.state
-                                    }
-                                } catch {
-                                    Write-Error "ServiceNow API query failed: \$_"
-                                    exit 1
-                                }
-                            """).trim()
+        //                         try {
+        //                             \$response = Invoke-RestMethod -Uri \$url -Method Get -Credential \$credential -Headers \$headers -ErrorAction Stop
+        //                             if (\$response.result.Count -gt 0) {
+        //                                 \$change = \$response.result[0]
+        //                                 Write-Output \$change.state
+        //                             }
+        //                         } catch {
+        //                             Write-Error "ServiceNow API query failed: \$_"
+        //                             exit 1
+        //                         }
+        //                     """).trim()
 
-                            if (response == "-1" || response.contains("-1")) {
-                                isImplemented = true
-                                echo "Task ID reached 'implement' status."
-                            } else {
-                                echo "Current status: ${response} | Elapsed time: ${elapsedTime}s / ${maxWaitSeconds}s"
-                            }
-                        }
+        //                     if (response == "-1" || response.contains("-1")) {
+        //                         isImplemented = true
+        //                         echo "Task ID reached 'implement' status."
+        //                     } else {
+        //                         echo "Current status: ${response} | Elapsed time: ${elapsedTime}s / ${maxWaitSeconds}s"
+        //                     }
+        //                 }
 
-                        if (!isImplemented) {
-                            error("Timeout waiting for Task ID to be implemented. Max wait time: ${env.MAX_WAIT_TIME}s")
-                        }
-                    }
-                }
-            }
-        }
+        //                 if (!isImplemented) {
+        //                     error("Timeout waiting for Task ID to be implemented. Max wait time: ${env.MAX_WAIT_TIME}s")
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         stage('Upgrade Production Environment') {
             steps {
