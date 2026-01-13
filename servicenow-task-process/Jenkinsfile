@@ -286,7 +286,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                 }
                             """).trim()
 
-                            if (response == "-2" || response.contains("-2")) {
+                            if (response == "2" || response.contains("2")) {
                                 isWorkInProgress = true
                                 echo "Task ID reached 'Work in Progress' status."
                             } else {
