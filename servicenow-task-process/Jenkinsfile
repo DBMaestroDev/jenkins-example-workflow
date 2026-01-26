@@ -87,6 +87,7 @@ pipeline {
                             }
                         """).trim()
 
+
                         if (response == "NOT_FOUND") {
                             error("Task ID ${env.TASK_ID} not found in ServiceNow.")
                         } else if (response.isEmpty() || response.startsWith("ERROR")) {
