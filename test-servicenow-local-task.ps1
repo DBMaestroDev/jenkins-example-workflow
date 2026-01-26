@@ -2,7 +2,7 @@
 param(
     [string]$TaskId = "TASK0000001",
     [string]$ServiceNowUser = "jenkins_user",
-    [string]$ServiceNowPassword = 'V(q4x5!7}TWtjFf=-4=d@bP[:M1IMU@O{)a:mFs3]kJt+UHN]wMjz.c<Z23pUi;0kFq$8ao*xX_Vg8YnJBvxE0@z@er1EofZ4J*k'
+    [string]$ServiceNowPassword = '193],nvWyUZgSGXy}5Oizn;XQ%<OlH.40I3hBXw9lR@!Rg[XHviJf]&bl.NG}*qBrnJ[:$s*R#EpkK>85iCBaGSL.oU0jHpo,n%:'
    #[string]$ServiceNowUser = "admin",
    #[string]$ServiceNowPassword = "2QDOdx-vy6-A"
 )
@@ -13,7 +13,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "ServiceNow API Local Test" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-$endpoint = "https://dev191348.service-now.com"
+$endpoint = "https://dev221769.service-now.com"
 $table = "task"
 
 Write-Host "" 
