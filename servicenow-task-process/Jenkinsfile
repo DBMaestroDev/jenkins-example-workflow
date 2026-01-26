@@ -51,6 +51,10 @@ pipeline {
                         echo "Querying ServiceNow for Task ID: ${env.TASK_ID}"
 
                         def response = powershell(returnStdout: true, script: """
+                            # Handle SSL/TLS certificate validation issues
+                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                            
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$taskId = "${env.TASK_ID}"
@@ -140,8 +144,10 @@ pipeline {
                 script {
                     if (env.TASK_SYS_ID?.trim()) {
                         withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
-                            powershell """
-                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                            powershell """                            # Handle SSL/TLS certificate validation issues
+                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                                        \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$sysId = "${env.TASK_SYS_ID}"
                             if ([string]::IsNullOrEmpty(\$sysId)) { Write-Output "SKIP"; exit 0 }
@@ -200,6 +206,10 @@ Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAM
                     if (env.TASK_SYS_ID?.trim()) {
                         withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                             powershell """
+                            # Handle SSL/TLS certificate validation issues
+                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                            
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
                             \$sysId = "${env.TASK_SYS_ID}"
@@ -256,6 +266,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             elapsedTime += pollIntervalSeconds
 
                             def response = powershell(returnStdout: true, script: """
+                                # Handle SSL/TLS certificate validation issues
+                                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                
                                 \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                 \$table = "\$env:SERVICENOW_TABLE"
                                 \$taskId = "${env.TASK_ID}"
@@ -317,6 +331,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             if (env.TASK_SYS_ID?.trim()) {
                                 withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                     powershell """
+                                    # Handle SSL/TLS certificate validation issues
+                                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                    
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.TASK_SYS_ID}"
@@ -360,6 +378,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                 if (env.TASK_SYS_ID?.trim()) {
                                     withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                         powershell """
+                                        # Handle SSL/TLS certificate validation issues
+                                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                        
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.TASK_SYS_ID}"
@@ -492,6 +514,10 @@ Error: ${err}
                             if (env.TASK_SYS_ID?.trim()) {
                                 withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                     powershell """
+                                    # Handle SSL/TLS certificate validation issues
+                                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                    
                                     \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                     \$table = "\$env:SERVICENOW_TABLE"
                                     \$sysId = "${env.TASK_SYS_ID}"
@@ -534,6 +560,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                                 if (env.TASK_SYS_ID?.trim()) {
                                     withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                         powershell """
+                                        # Handle SSL/TLS certificate validation issues
+                                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                        
                                         \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                                         \$table = "\$env:SERVICENOW_TABLE"
                                         \$sysId = "${env.TASK_SYS_ID}"
