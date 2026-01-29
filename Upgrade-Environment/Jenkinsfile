@@ -1,0 +1,295 @@
+pipeline {
+    // This pipeline upgrades a target environment with a list of packages.
+    // It performs the following steps:
+    // 1. Validates input parameters
+    // 2. Verifies that the provided Task ID exists in ServiceNow and is not closed
+    // 3. Upgrades the target environment with the specified packages
+
+    agent any
+
+    parameters {
+        string(name: 'TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
+        choice(name: 'TARGET_ENVIRONMENT', choices: ['rs', 'qa', 'stage', 'prod'], description: 'Target environment prefix for upgrade')
+        choice(name: 'DBM_PROJECT_NAME', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to Task ID')
+    }
+
+    environment {
+        // ServiceNow endpoint is on text credentials:
+        // 'servicenow-endpoint'
+
+        // DBmaestro configuration
+        DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+        DBM_AGENT_ENDPOINT = 'localhost:8017'
+        DBM_ENV_NAME = "${params.TARGET_ENVIRONMENT}_${params.DBM_PROJECT_NAME}"
+        DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
+        DBM_USE_SSL = 'True'
+    }
+
+    stages {
+        stage('Validate Parameters') {
+            steps {
+                    script {
+                        if (!params.TASK_ID?.trim()) {
+                            error("TASK_ID parameter is required. Provide a ServiceNow Task ID.")
+                        }
+                        env.TASK_ID = params.TASK_ID.trim()
+                        
+                        // Determine ServiceNow table based on TASK_ID prefix
+                        if (env.TASK_ID.startsWith('CTASK')) {
+                            env.SERVICENOW_TABLE = 'change_task'
+                        } else if (env.TASK_ID.startsWith('TASK')) {
+                            env.SERVICENOW_TABLE = 'sc_task'
+                        } else {
+                            error("TASK_ID must start with 'TASK' or 'CTASK'. Provided: ${env.TASK_ID}")
+                        }
+                        
+                        echo "Using Task ID: ${env.TASK_ID} (Table: ${env.SERVICENOW_TABLE})"
+
+                        // Set build display name to the Task ID
+                        currentBuild.displayName = "${env.TASK_ID}"
+                    }
+            }
+        }
+
+        stage('Verify Task ID Exists') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                        echo "Querying ServiceNow for Task ID: ${env.TASK_ID}"
+
+                        def response = powershell(returnStdout: true, script: """
+                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                            \$table = "\$env:SERVICENOW_TABLE"
+                            \$taskId = "${env.TASK_ID}"
+                            
+                            # Build the URL with proper query encoding and field restriction
+                            \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
+                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,parent")
+                            \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_fields=" + \$fieldsValue + "&sysparm_limit=1&sysparm_display_value=true"
+                            
+                            \$username = "\$env:SN_USER"
+                            \$password = "\$env:SN_PASS"
+                            
+                            # Handle SSL/TLS certificate validation issues with System.Net.WebClient
+                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
+                            [System.Net.ServicePointManager]::CheckCertificateRevocationList = \$false
+                            
+                            try {
+                                \$webClient = New-Object System.Net.WebClient
+                                \$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("\$username`:\$password"))
+                                \$webClient.Headers.Add("Authorization", "Basic \$auth")
+                                \$webClient.Headers.Add("Accept", "application/json")
+                                
+                                \$jsonOutput = \$webClient.DownloadString(\$url)
+                                \$response = \$jsonOutput | ConvertFrom-Json
+                                
+                                if (\$response.result -and \$response.result.Count -gt 0) {
+                                    \$change = \$response.result[0]
+                                    Write-Output (\$change | ConvertTo-Json -Compress)
+                                } else {
+                                    Write-Output "NOT_FOUND"
+                                }
+                            } catch {
+                                Write-Error "ServiceNow API query failed: \$_"
+                                exit 1
+                            }
+                        """).trim()
+
+
+                        if (response == "NOT_FOUND") {
+                            error("Task ID ${env.TASK_ID} not found in ServiceNow.")
+                        } else if (response.isEmpty() || response.startsWith("ERROR")) {
+                            error("Failed to query ServiceNow: ${response}")
+                        }
+
+                        // Parse JSON response and extract status, sys_id, parent info and other details
+                        def jsonSlurper = new groovy.json.JsonSlurper()
+                        def taskInfo = jsonSlurper.parseText(response)
+                        env.TASK_STATUS = taskInfo.state ?: 'unknown'
+                        env.TASK_SHORT_DESC = taskInfo.short_description ?: 'N/A'
+                        env.TASK_SYS_ID = taskInfo.sys_id ?: ''
+                        
+                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
+                        if (params.DBM_PACKAGE_NAME?.trim()) {
+                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        } else {
+                            env.DBM_PACKAGE_NAME = env.TASK_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
+                        
+                        // Check if Task ID is in closed state (state contains "Closed")
+                        if (env.TASK_STATUS?.contains("Closed")) {
+                            error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
+                        }
+                        
+                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Parent: ${env.TASK_PARENT_DISPLAY_VALUE} | Description: ${env.TASK_SHORT_DESC}"
+                    }
+                }
+            }
+        }
+
+        stage('Upgrade Target Environment') {
+            steps {
+                script {
+                    def packageList = "${env.DBM_PACKAGE_NAME}".split(',').collect { it.trim() }
+                    def failedPackages = []
+
+                    packageList.each { packageName ->
+                        echo "Processing package: ${packageName}"
+                        def keepTrying = true
+                        while (keepTrying) {
+                            try {
+                                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                    powershell """
+                                    java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME}" -PackageName "${packageName}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                    """
+                                }
+                                echo "Upgrade succeeded for ${env.DBM_ENV_NAME} - Package: ${packageName}"
+                                // Post success note to ServiceNow (best-effort)
+                                if (env.TASK_SYS_ID?.trim()) {
+                                    withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                                        powershell """
+                                        # Handle SSL/TLS certificate validation issues
+                                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                        
+                                        \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                        \$table = "\$env:SERVICENOW_TABLE"
+                                        \$sysId = "${env.TASK_SYS_ID}"
+                                        \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                        \$overviewUrl = "\$buildUrl/pipeline-overview"
+                                        \$message = @"
+Environment upgrade SUCCEEDED
+
+Environment: ${env.DBM_ENV_NAME}
+Package: ${packageName}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
+"@
+                                        \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                        \$username = "\$env:SN_USER"
+                                        \$password = "\$env:SN_PASS"
+
+                                        # Handle SSL/TLS certificate validation issues with System.Net.WebClient
+                                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
+                                        [System.Net.ServicePointManager]::CheckCertificateRevocationList = \$false
+
+                                        try {
+                                            \$webClient = New-Object System.Net.WebClient
+                                            \$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("\$username`:\$password"))
+                                            \$webClient.Headers.Add("Authorization", "Basic \$auth")
+                                            \$webClient.Headers.Add("Content-Type", "application/json")
+                                            \$webClient.Headers.Add("Accept", "application/json")
+                                            
+                                            \$uri = \$endpoint + "/api/now/table/" + \$table + "/" + \$sysId
+                                            \$webClient.UploadString(\$uri, "PATCH", \$body) | Out-Null
+                                            Write-Output "Posted upgrade-success note to ServiceNow"
+                                        } catch {
+                                            Write-Output "Failed to post upgrade-success note: \$_"
+                                        }
+                                        """
+                                    }
+                                } else {
+                                    echo "Skipping ServiceNow success comment: Task sys_id not available"
+                                }
+                                keepTrying = false
+                            } catch (err) {
+                                echo "Upgrade attempt failed for package ${packageName}: ${err}"
+                                // Post a failure note to ServiceNow (non-fatal for comment posting)
+                                try {
+                                    if (env.TASK_SYS_ID?.trim()) {
+                                        withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                                            powershell """
+                                            # Handle SSL/TLS certificate validation issues
+                                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+                                            
+                                            \$endpoint = "\$env:SERVICENOW_ENDPOINT"
+                                            \$table = "\$env:SERVICENOW_TABLE"
+                                            \$sysId = "${env.TASK_SYS_ID}"
+                                            \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
+                                            \$overviewUrl = "\$buildUrl/pipeline-overview"
+                                            \$message = @"
+Environment upgrade FAILED
+
+Environment: ${env.DBM_ENV_NAME}
+Package: ${packageName}
+Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
+Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
+
+Error: ${err}
+"@
+                                            \$body = @{ work_notes = \$message } | ConvertTo-Json
+
+                                            \$username = "\$env:SN_USER"
+                                            \$password = "\$env:SN_PASS"
+
+                                            # Handle SSL/TLS certificate validation issues with System.Net.WebClient
+                                            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
+                                            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
+                                            [System.Net.ServicePointManager]::CheckCertificateRevocationList = \$false
+
+                                            try {
+                                                \$webClient = New-Object System.Net.WebClient
+                                                \$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("\$username`:\$password"))
+                                                \$webClient.Headers.Add("Authorization", "Basic \$auth")
+                                                \$webClient.Headers.Add("Content-Type", "application/json")
+                                                \$webClient.Headers.Add("Accept", "application/json")
+                                                
+                                                \$uri = \$endpoint + "/api/now/table/" + \$table + "/" + \$sysId
+                                                \$webClient.UploadString(\$uri, "PATCH", \$body) | Out-Null
+                                                Write-Output "Posted upgrade-failure note to ServiceNow"
+                                            } catch {
+                                                Write-Output "Failed to post upgrade-failure note: \$_"
+                                            }
+                                            """
+                                        }
+                                    } else {
+                                        echo "Skipping ServiceNow failure comment: Task sys_id not available"
+                                    }
+                                } catch (postErr) {
+                                    echo "Posting failure note also failed: ${postErr}"
+                                }
+
+                                def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                if (action == 'Abort') {
+                                    error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure on package ${packageName}.")
+                                } else if (action == 'Skip') {
+                                    failedPackages.add(packageName)
+                                    keepTrying = false
+                                    echo "Skipping package ${packageName} and moving to next..."
+                                } else {
+                                    echo "User chose to retry the upgrade for package ${packageName}. Retrying..."
+                                }
+                            }
+                        }
+                    }
+
+                    // Report any failed packages
+                    if (failedPackages.size() > 0) {
+                        echo "WARNING: The following packages failed to upgrade: ${failedPackages.join(', ')}"
+                    } else {
+                        echo "All packages upgraded successfully to ${env.DBM_ENV_NAME}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Completed Upgrade pipeline. TASK_ID=${env.TASK_ID} | Final Status=${env.TASK_STATUS}"
+        }
+        success {
+            echo "Successfully upgraded packages ${env.DBM_PACKAGE_NAME} on ${env.DBM_ENV_NAME}."
+        }
+        failure {
+            echo "Pipeline failed for Task ID ${env.TASK_ID}. Review logs for details."
+        }
+    }
+}

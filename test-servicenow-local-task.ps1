@@ -1,32 +1,48 @@
-# Local test script to verify ServiceNow API connectivity and query format
+# Local test script to verify ServiceNow API connectivity with SSL/TLS bypass
 param(
     [string]$TaskId = "TASK0000001",
     [string]$ServiceNowUser = "jenkins_user",
     [string]$ServiceNowPassword = '193],nvWyUZgSGXy}5Oizn;XQ%<OlH.40I3hBXw9lR@!Rg[XHviJf]&bl.NG}*qBrnJ[:$s*R#EpkK>85iCBaGSL.oU0jHpo,n%:'
-   #[string]$ServiceNowUser = "admin",
-   #[string]$ServiceNowPassword = "2QDOdx-vy6-A"
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "ServiceNow API Local Test" -ForegroundColor Cyan
+Write-Host "ServiceNow API Local Test with SSL/TLS Handling" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-$endpoint = "https://dev221769.service-now.com"
-$table = "task"
+# ==============================================================================
+# SSL/TLS CERTIFICATE HANDLING - SOLUTION
+# ==============================================================================
+Write-Host ""
+Write-Host "[SSL/TLS TEST] Configuring Certificate Validation" -ForegroundColor Yellow
 
-Write-Host "" 
+# Bypass certificate validation (for environments with self-signed certs)
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+
+# Force TLS 1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+# Disable certificate revocation list checking
+[System.Net.ServicePointManager]::CheckCertificateRevocationList = $false
+
+Write-Host "Certificate validation bypassed" -ForegroundColor Green
+Write-Host "TLS 1.2 enabled" -ForegroundColor Green
+Write-Host "CRL checking disabled" -ForegroundColor Green
+
+$endpoint = "https://dev221769.service-now.com"
+$table = "sc_task"
+
+Write-Host ""
 Write-Host "[TEST 1] Testing API Connectivity" -ForegroundColor Yellow
 Write-Host "Endpoint: $endpoint"
 Write-Host "Table: $table"
 Write-Host "Task ID: $TaskId"
 
 # Build the URL with proper query encoding
-# Limit to fields that jenkins_user should have permission to read
 $queryValue = [Uri]::EscapeDataString("number=$TaskId")
 $fieldsValue = [Uri]::EscapeDataString("number,state,short_description,sys_id,parent")
-$url = "$endpoint/api/now/table/$table`?sysparm_query=$queryValue&sysparm_fields=$fieldsValue&sysparm_limit=1&sysparm_display_value=true"
+$url = "$endpoint/api/now/table/$table`?sysparm_query=$queryValue`&sysparm_fields=$fieldsValue`&sysparm_limit=1`&sysparm_display_value=true"
 
 Write-Host ""
 Write-Host "Built URL: $url" -ForegroundColor Gray
@@ -40,36 +56,42 @@ Write-Host "SUCCESS: Credential object created" -ForegroundColor Green
 
 # Set headers
 $headers = @{
-    "Accept" = "application/xml"
+    "Accept" = "application/json"
 }
 Write-Host ""
 Write-Host "[TEST 3] Preparing Headers" -ForegroundColor Yellow
-Write-Host "Headers: Accept = application/xml" -ForegroundColor Gray
+Write-Host "Headers: Accept = application/json" -ForegroundColor Gray
 
 # Make the API call
 Write-Host ""
 Write-Host "[TEST 4] Making ServiceNow API Call" -ForegroundColor Yellow
 Write-Host "Method: GET" -ForegroundColor Gray
-Write-Host "Credential: Using PSCredential with Basic Auth" -ForegroundColor Gray
-
-$httpStatusCode = $null
-$errorType = $null
-$errorMessage = $null
-$errorDetail = $null
 
 try {
     Write-Host ""
-    Write-Host "Calling Invoke-RestMethod..." -ForegroundColor Gray
-    [xml]$response = Invoke-RestMethod -Uri $url -Method Get -Credential $credential -Headers $headers -ErrorAction Stop
+    Write-Host "Calling using System.Net.WebClient..." -ForegroundColor Gray
+    
+    # Use WebClient which handles SSL differently than Invoke-RestMethod
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11
+    [System.Net.ServicePointManager]::CheckCertificateRevocationList = $false
+    
+    $webClient = New-Object System.Net.WebClient
+    $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$ServiceNowUser`:$ServiceNowPassword"))
+    $webClient.Headers.Add("Authorization", "Basic $auth")
+    $webClient.Headers.Add("Accept", "application/json")
+    
+    $curlOutput = $webClient.DownloadString($url)
+    $response = $curlOutput | ConvertFrom-Json
 
     Write-Host ""
     Write-Host "SUCCESS: API Call Successful!" -ForegroundColor Green
     Write-Host ""
     Write-Host "[TEST 5] Response Analysis" -ForegroundColor Yellow
     
-    if ($response.response.result) {
+    if ($response.result -and $response.result.Count -gt 0) {
         Write-Host "Found 1 result" -ForegroundColor Green
-        $result = $response.response.result
+        $result = $response.result[0]
         
         Write-Host ""
         Write-Host "Task Details:" -ForegroundColor Cyan
@@ -80,114 +102,44 @@ try {
         
         Write-Host ""
         Write-Host "Parent Information:" -ForegroundColor Cyan
-        if ($result.parent) {
-            Write-Host "  Parent Display Value: $($result.parent.display_value)" -ForegroundColor Gray
-            Write-Host "  Parent Link: $($result.parent.link)" -ForegroundColor Gray
+        if ($result.parent -and $result.parent.display_value) {
+            Write-Host "  Parent Display Value: $($result.parent.display_value)" -ForegroundColor Green
+            Write-Host "  Parent Value: $($result.parent.value)" -ForegroundColor Gray
         } else {
             Write-Host "  No parent found" -ForegroundColor Gray
         }
         
         Write-Host ""
-        Write-Host "Full Response (XML):" -ForegroundColor Gray
-        Write-Host ($response.OuterXml) -ForegroundColor Gray
+        Write-Host "Full Response (JSON):" -ForegroundColor Gray
+        Write-Host ($response | ConvertTo-Json) -ForegroundColor Gray
         
         Write-Host ""
         Write-Host "========================================" -ForegroundColor Green
         Write-Host "SUCCESS: ALL TESTS PASSED" -ForegroundColor Green
-        Write-Host "API is working correctly!" -ForegroundColor Green
+        Write-Host "API is working with SSL/TLS bypass!" -ForegroundColor Green
         Write-Host "========================================" -ForegroundColor Green
         
     } else {
-        Write-Host ""
-        Write-Host "ERROR: No results found for Task ID: $TaskId" -ForegroundColor Red
-        Write-Host "Response body:" -ForegroundColor Gray
-        Write-Host ($response.OuterXml) -ForegroundColor Gray
+        Write-Host "ERROR: No results found for Task ID $TaskId" -ForegroundColor Red
+        exit 1
     }
-
 } catch {
     Write-Host ""
     Write-Host "ERROR: API Call Failed!" -ForegroundColor Red
-    
-    # Capture HTTP status code
-    if ($_.Exception.Response) {
-        $httpStatusCode = [int]$_.Exception.Response.StatusCode
-        Write-Host ""
-        Write-Host "HTTP Status Code: $httpStatusCode" -ForegroundColor Red
-        Write-Host "Status Description: $($_.Exception.Response.StatusDescription)" -ForegroundColor Red
-        
-        # Categorize the error
-        if ($httpStatusCode -eq 401) {
-            $errorType = "AUTHENTICATION_ERROR"
-            Write-Host "Error Type: $errorType - Invalid username or password" -ForegroundColor Red
-        } elseif ($httpStatusCode -eq 403) {
-            $errorType = "AUTHORIZATION_ERROR"
-            Write-Host "Error Type: $errorType - User does not have permission to access this resource" -ForegroundColor Red
-        } elseif ($httpStatusCode -eq 404) {
-            $errorType = "NOT_FOUND_ERROR"
-            Write-Host "Error Type: $errorType - Change request or endpoint not found" -ForegroundColor Red
-        } elseif ($httpStatusCode -eq 400) {
-            $errorType = "BAD_REQUEST_ERROR"
-            Write-Host "Error Type: $errorType - Invalid query parameters or malformed request" -ForegroundColor Red
-        } elseif ($httpStatusCode -ge 500) {
-            $errorType = "SERVER_ERROR"
-            Write-Host "Error Type: $errorType - ServiceNow server error" -ForegroundColor Red
-        }
-        
-        # Try to parse error response body
-        try {
-            $errorStream = $_.Exception.Response.GetResponseStream()
-            $reader = New-Object System.IO.StreamReader($errorStream)
-            $errorBody = $reader.ReadToEnd()
-            $reader.Close()
-            
-            Write-Host ""
-            Write-Host "Error Response Body:" -ForegroundColor Gray
-            Write-Host $errorBody -ForegroundColor Red
-            
-            # Try to extract error message and detail from JSON response
-            try {
-                $errorJson = $errorBody | ConvertFrom-Json
-                if ($errorJson.error) {
-                    $errorMessage = $errorJson.error.message
-                    $errorDetail = $errorJson.error.detail
-                    Write-Host ""
-                    Write-Host "Error Message: $errorMessage" -ForegroundColor Red
-                    if ($errorDetail) {
-                        Write-Host "Error Detail: $errorDetail" -ForegroundColor Red
-                    }
-                } elseif ($errorJson.message) {
-                    $errorMessage = $errorJson.message
-                    $errorDetail = $errorJson.detail
-                    Write-Host ""
-                    Write-Host "Error Message: $errorMessage" -ForegroundColor Red
-                    if ($errorDetail) {
-                        Write-Host "Error Detail: $errorDetail" -ForegroundColor Red
-                    }
-                }
-            } catch {
-                # Response body is not JSON, display as plain text
-            }
-        } catch {
-            Write-Host "Could not read error response body" -ForegroundColor Gray
-        }
-    } else {
-        # No HTTP response available, likely a network or credential error
-        $errorType = "CONNECTIVITY_ERROR"
-        $errorMessage = $_.Exception.Message
-        Write-Host ""
-        Write-Host "Error Type: $errorType" -ForegroundColor Red
-        Write-Host "Error Message: $errorMessage" -ForegroundColor Red
-    }
-    
+    Write-Host "Error Message: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Red
-    Write-Host "FAILED: Check details above" -ForegroundColor Red
-    if ($errorType) {
-        Write-Host "Error Type Summary: $errorType" -ForegroundColor Red
-    }
+    Write-Host "CONFIGURATION NEEDED FOR JENKINSFILE" -ForegroundColor Yellow
     Write-Host "========================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Add to all PowerShell script blocks:" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { " + '$' + "true }" -ForegroundColor Cyan
+    Write-Host "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12" -ForegroundColor Cyan
+    Write-Host "[System.Net.ServicePointManager]::CheckCertificateRevocationList = " + '$' + "false" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Use withCredentials with string binding for endpoint:" -ForegroundColor Gray
+    Write-Host 'withCredentials([string(credentialsId: "servicenow-endpoint", variable: "SERVICENOW_ENDPOINT")])' -ForegroundColor Cyan
+    
     exit 1
 }
-
-Write-Host ""
-Write-Host "Test completed at: $(Get-Date)" -ForegroundColor Gray

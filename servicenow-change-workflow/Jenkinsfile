@@ -123,7 +123,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -Build -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_DEV" -VersionType "Tasks" -AdditionalInformation "${env.CR_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "${env.DBM_JAR_PATH}" -Build -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_DEV}" -VersionType "Tasks" -AdditionalInformation "${env.CR_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL True -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -185,7 +185,7 @@ Status: Waiting for change to be scheduled before deploying to ${env.DBM_ENV_NAM
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "\$env:DBM_JAR_PATH" -PreCheck -ProjectName "\$env:DBM_PROJECT_NAME" -Server "\$env:DBM_AGENT_ENDPOINT" -PackageName "${env.DBM_PACKAGE_NAME}" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "${env.DBM_JAR_PATH}" -PreCheck -ProjectName "${env.DBM_PROJECT_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -PackageName "${env.DBM_PACKAGE_NAME}" -UseSSL True -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -307,7 +307,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                         try {
                             withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                                 powershell """
-                                java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_RS" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_RS}" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL True -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                 """
                             }
                             echo "Release Source upgrade succeeded for package ${env.CR_ID}"
@@ -480,7 +480,7 @@ Error: ${err}
                         try {
                             withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                                 powershell """
-                                java -jar "\$env:DBM_JAR_PATH" -Upgrade -ProjectName "\$env:DBM_PROJECT_NAME" -EnvName "\$env:DBM_ENV_NAME_PROD" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL True -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_PROD}" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL True -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                 """
                             }
                             echo "Production upgrade succeeded for package ${env.CR_ID}"
