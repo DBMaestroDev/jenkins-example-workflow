@@ -26,7 +26,6 @@ pipeline {
         DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
         DBM_USE_SSL = 'True'
-        
         // Input timeout (in seconds) - 1 hour
         INPUT_TIMEOUT = '3600'
     }

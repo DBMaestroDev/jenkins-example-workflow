@@ -9,10 +9,10 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
-        choice(name: 'TARGET_ENVIRONMENT', choices: ['rs', 'qa', 'stage', 'prod'], description: 'Target environment prefix for upgrade')
-        choice(name: 'DBM_PROJECT_NAME', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
-        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to Task ID')
+        string(name: 'ServiceNow_Task_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
+        choice(name: 'DBMaestro_Project_Name', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        choice(name: 'Target_Environment', choices: ['rs', 'qa', 'stage', 'prod'], description: 'Target environment prefix for upgrade')
+        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to Task ID')
     }
 
     environment {
@@ -22,34 +22,44 @@ pipeline {
         // DBmaestro configuration
         DBM_JAR_PATH = 'D:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
         DBM_AGENT_ENDPOINT = 'UP0032ABMI:8017'
-        DBM_ENV_NAME = "${params.TARGET_ENVIRONMENT}_${params.DBM_PROJECT_NAME}"
-        DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
+        DBM_ENV_NAME = "${params.Target_Environment}_${params.DBMaestro_Project_Name}"
+        DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
-        DBM_USE_SSL = 'False'
+        DBM_USE_SSL = 'False'        
+        // Input timeout (in seconds) - 1 hour
+        INPUT_TIMEOUT = '3600'
     }
 
     stages {
         stage('Validate Parameters') {
             steps {
                     script {
-                        if (!params.TASK_ID?.trim()) {
-                            error("TASK_ID parameter is required. Provide a ServiceNow Task ID.")
+                        if (!params.ServiceNow_Task_ID?.trim()) {
+                            error("ServiceNow_Task_ID parameter is required. Provide a ServiceNow Task ID.")
                         }
-                        env.TASK_ID = params.TASK_ID.trim()
+                        env.ServiceNow_Task_ID = params.ServiceNow_Task_ID.trim()
+
+                        // Set DBMaestro_Package_Name if available, otherwise to ServiceNow_Task_ID
+                        if (params.DBMaestro_Package_Name?.trim()) {
+                            env.DBMaestro_Package_Name = params.DBMaestro_Package_Name.trim()
+                        } else {
+                            env.DBMaestro_Package_Name = env.ServiceNow_Task_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
                         
-                        // Determine ServiceNow table based on TASK_ID prefix
-                        if (env.TASK_ID.startsWith('CTASK')) {
+                        // Determine ServiceNow table based on ServiceNow_Task_ID prefix
+                        if (env.ServiceNow_Task_ID.startsWith('CTASK')) {
                             env.SERVICENOW_TABLE = 'change_task'
-                        } else if (env.TASK_ID.startsWith('TASK')) {
+                        } else if (env.ServiceNow_Task_ID.startsWith('TASK') || env.ServiceNow_Task_ID.startsWith('SCTASK')) {
                             env.SERVICENOW_TABLE = 'sc_task'
                         } else {
-                            error("TASK_ID must start with 'TASK' or 'CTASK'. Provided: ${env.TASK_ID}")
+                            error("ServiceNow_Task_ID must start with 'TASK', 'SCTASK', or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
                         }
                         
-                        echo "Using Task ID: ${env.TASK_ID} (Table: ${env.SERVICENOW_TABLE})"
+                        echo "Using Task ID: ${env.ServiceNow_Task_ID} (Table: ${env.SERVICENOW_TABLE})"
 
                         // Set build display name to the Task ID
-                        currentBuild.displayName = "${env.TASK_ID}"
+                        currentBuild.displayName = "${env.ServiceNow_Task_ID}"
                     }
             }
         }
@@ -58,16 +68,16 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
-                        echo "Querying ServiceNow for Task ID: ${env.TASK_ID}"
+                        echo "Querying ServiceNow for Task ID: ${env.ServiceNow_Task_ID}"
 
                         def response = powershell(returnStdout: true, script: """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$taskId = "${env.TASK_ID}"
+                            \$taskId = "${env.ServiceNow_Task_ID}"
                             
                             # Build the URL with proper query encoding and field restriction
                             \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
-                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,parent")
+                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,short_description")
                             \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_fields=" + \$fieldsValue + "&sysparm_limit=1&sysparm_display_value=true"
                             
                             \$username = "\$env:SN_USER"
@@ -101,32 +111,24 @@ pipeline {
 
 
                         if (response == "NOT_FOUND") {
-                            error("Task ID ${env.TASK_ID} not found in ServiceNow.")
+                            error("Task ID ${env.ServiceNow_Task_ID} not found in ServiceNow.")
                         } else if (response.isEmpty() || response.startsWith("ERROR")) {
                             error("Failed to query ServiceNow: ${response}")
                         }
 
-                        // Parse JSON response and extract status, sys_id, parent info and other details
+                        // Parse JSON response and extract status, sys_id, and other details
                         def jsonSlurper = new groovy.json.JsonSlurper()
                         def taskInfo = jsonSlurper.parseText(response)
                         env.TASK_STATUS = taskInfo.state ?: 'unknown'
                         env.TASK_SHORT_DESC = taskInfo.short_description ?: 'N/A'
                         env.TASK_SYS_ID = taskInfo.sys_id ?: ''
                         
-                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
-                        if (params.DBM_PACKAGE_NAME?.trim()) {
-                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
-                        } else {
-                            env.DBM_PACKAGE_NAME = env.TASK_ID
-                        }
-                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
-                        
                         // Check if Task ID is in closed state (state contains "Closed")
                         if (env.TASK_STATUS?.contains("Closed")) {
-                            error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
+                            error("Task ID ${env.ServiceNow_Task_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Parent: ${env.TASK_PARENT_DISPLAY_VALUE} | Description: ${env.TASK_SHORT_DESC}"
+                        echo "Found Task ID: ${env.ServiceNow_Task_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
@@ -135,7 +137,7 @@ pipeline {
         stage('Upgrade Target Environment') {
             steps {
                 script {
-                    def packageList = "${env.DBM_PACKAGE_NAME}".split(',').collect { it.trim() }
+                    def packageList = "${env.DBMaestro_Package_Name}".split(',').collect { it.trim() }
                     def failedPackages = []
 
                     packageList.each { packageName ->
@@ -257,7 +259,9 @@ Error: ${err}
                                     echo "Posting failure note also failed: ${postErr}"
                                 }
 
-                                def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                def action = timeout(time: Integer.parseInt(env.INPUT_TIMEOUT), unit: 'SECONDS') {
+                                    input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                }
                                 if (action == 'Abort') {
                                     error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure on package ${packageName}.")
                                 } else if (action == 'Skip') {
@@ -284,13 +288,13 @@ Error: ${err}
 
     post {
         always {
-            echo "Completed Upgrade pipeline. TASK_ID=${env.TASK_ID} | Final Status=${env.TASK_STATUS}"
+            echo "Completed Upgrade pipeline. ServiceNow_Task_ID=${env.ServiceNow_Task_ID} | Final Status=${env.TASK_STATUS}"
         }
         success {
-            echo "Successfully upgraded packages ${env.DBM_PACKAGE_NAME} on ${env.DBM_ENV_NAME}."
+            echo "Successfully upgraded packages ${env.DBMaestro_Package_Name} on ${env.DBM_ENV_NAME}."
         }
         failure {
-            echo "Pipeline failed for Task ID ${env.TASK_ID}. Review logs for details."
+            echo "Pipeline failed for Task ID ${env.ServiceNow_Task_ID}. Review logs for details."
         }
     }
 }
