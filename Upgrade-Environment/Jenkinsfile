@@ -1,4 +1,5 @@
 pipeline {
+    // version: 1.0
     // This pipeline upgrades a target environment with a list of packages.
     // It performs the following steps:
     // 1. Validates input parameters
@@ -142,7 +143,7 @@ pipeline {
                         def keepTrying = true
                         while (keepTrying) {
                             try {
-                                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                                     powershell """
                                     java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME}" -PackageName "${packageName}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                     """

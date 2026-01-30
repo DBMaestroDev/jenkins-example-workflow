@@ -1,4 +1,5 @@
 pipeline {
+    // version: 1.0
     // This pipeline upgrades a target environment with a list of packages.
     // It performs the following steps:
     // 1. Validates input parameters
@@ -23,8 +24,8 @@ pipeline {
         DBM_AGENT_ENDPOINT = 'UP0032ABMI:8017'
         DBM_ENV_NAME = "${params.TARGET_ENVIRONMENT}_${params.DBM_PROJECT_NAME}"
         DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
-        DBM_AUTH_TYPE = 'Domain'
-        DBM_USE_SSL = 'True'
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
+        DBM_USE_SSL = 'False'
     }
 
     stages {

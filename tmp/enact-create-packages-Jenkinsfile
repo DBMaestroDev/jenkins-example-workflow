@@ -1,5 +1,4 @@
 pipeline {
-    // version: 1.0
     // This pipeline creates a DBmaestro package from Source Control based on a ServiceNow Task or CTask ID.
     // It performs the following steps:
     // 1. Validates input parameters
@@ -12,9 +11,8 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'SN_TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
+        string(name: 'TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
         choice(name: 'DBM_PROJECT_NAME', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
-        string(name: 'SC_TASK_ID', defaultValue: '', description: 'Source Control task ID (if empty, defaults to Task or CTask ID)')
         string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to Task or CTask ID)')
         booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
         booleanParam(name: 'UPGRADE_RS_ENVIRONMENT', defaultValue: false, description: 'If checked, upgrade package in Release Source environment after precheck')
@@ -38,24 +36,24 @@ pipeline {
         stage('Validate Parameters') {
             steps {
                     script {
-                        if (!params.SN_TASK_ID?.trim()) {
-                            error("SN_TASK_ID parameter is required. Provide a ServiceNow Task ID.")
+                        if (!params.TASK_ID?.trim()) {
+                            error("TASK_ID parameter is required. Provide a ServiceNow Task ID.")
                         }
-                        env.SN_TASK_ID = params.SN_TASK_ID.trim()
+                        env.TASK_ID = params.TASK_ID.trim()
                         
-                        // Determine ServiceNow table based on SN_TASK_ID prefix
-                        if (env.SN_TASK_ID.startsWith('CTASK')) {
+                        // Determine ServiceNow table based on TASK_ID prefix
+                        if (env.TASK_ID.startsWith('CTASK')) {
                             env.SERVICENOW_TABLE = 'change_task'
-                        } else if (env.SN_TASK_ID.startsWith('TASK')) {
+                        } else if (env.TASK_ID.startsWith('TASK')) {
                             env.SERVICENOW_TABLE = 'sc_task'
                         } else {
-                            error("SN_TASK_ID must start with 'TASK' or 'CTASK'. Provided: ${env.SN_TASK_ID}")
+                            error("TASK_ID must start with 'TASK' or 'CTASK'. Provided: ${env.TASK_ID}")
                         }
                         
-                        echo "Using Task ID: ${env.SN_TASK_ID} (Table: ${env.SERVICENOW_TABLE})"
+                        echo "Using Task ID: ${env.TASK_ID} (Table: ${env.SERVICENOW_TABLE})"
 
                         // Set build display name to the Task ID
-                        currentBuild.displayName = "${env.SN_TASK_ID}"
+                        currentBuild.displayName = "${env.TASK_ID}"
                     }
             }
         }
@@ -64,12 +62,12 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
-                        echo "Querying ServiceNow for Task ID: ${env.SN_TASK_ID}"
+                        echo "Querying ServiceNow for Task ID: ${env.TASK_ID}"
 
                         def response = powershell(returnStdout: true, script: """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$taskId = "${env.SN_TASK_ID}"
+                            \$taskId = "${env.TASK_ID}"
                             
                             # Build the URL with proper query encoding and field restriction
                             \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
@@ -107,7 +105,7 @@ pipeline {
 
 
                         if (response == "NOT_FOUND") {
-                            error("Task ID ${env.SN_TASK_ID} not found in ServiceNow.")
+                            error("Task ID ${env.TASK_ID} not found in ServiceNow.")
                         } else if (response.isEmpty() || response.startsWith("ERROR")) {
                             error("Failed to query ServiceNow: ${response}")
                         }
@@ -119,20 +117,20 @@ pipeline {
                         env.TASK_SHORT_DESC = taskInfo.short_description ?: 'N/A'
                         env.TASK_SYS_ID = taskInfo.sys_id ?: ''
                         
-                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to SN_TASK_ID
+                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to TASK_ID
                         if (params.DBM_PACKAGE_NAME?.trim()) {
                             env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
                         } else {
-                            env.DBM_PACKAGE_NAME = env.SN_TASK_ID
+                            env.DBM_PACKAGE_NAME = env.TASK_ID
                         }
                         echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
                         
                         // Check if Task ID is in closed state (state contains "Closed")
                         if (env.TASK_STATUS?.contains("Closed")) {
-                            error("Task ID ${env.SN_TASK_ID} is in closed state and cannot be processed.")
+                            error("Task ID ${env.TASK_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Task ID: ${env.SN_TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
+                        echo "Found Task ID: ${env.TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
@@ -145,7 +143,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "${env.DBM_JAR_PATH}" -Build -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_DEV}" -VersionType "Tasks" -AdditionalInformation "${env.SC_TASK_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "${env.DBM_JAR_PATH}" -Build -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_DEV}" -VersionType "Tasks" -AdditionalInformation "${env.DBM_PACKAGE_NAME}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -160,7 +158,7 @@ pipeline {
             steps {
                 script {
                     if (env.TASK_SYS_ID?.trim()) {
-                        withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                        withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                             powershell """                            # Handle SSL/TLS certificate validation issues
                             [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
                             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -225,7 +223,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
             steps {
                 script {
                     if (env.TASK_SYS_ID?.trim()) {
-                        withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                        withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                             powershell """
                             # Handle SSL/TLS certificate validation issues
                             [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
@@ -293,7 +291,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             echo "Upgrade succeeded for ${env.DBM_ENV_NAME} - Package: ${env.DBM_PACKAGE_NAME}"
                             // Post success note to ServiceNow (best-effort)
                             if (env.TASK_SYS_ID?.trim()) {
-                                withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                                withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                     powershell """
                                     # Handle SSL/TLS certificate validation issues
                                     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
@@ -346,7 +344,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             // Post a failure note to ServiceNow (non-fatal for comment posting)
                             try {
                                 if (env.TASK_SYS_ID?.trim()) {
-                                    withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
+                                    withCredentials([usernamePassword(credentialsId: '480ceae8-cd4c-4cd2-ab83-10b46db99ca8', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS')]) {
                                         powershell """
                                         # Handle SSL/TLS certificate validation issues
                                         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { \$true }
@@ -399,7 +397,7 @@ Error: ${err}
                                 echo "Posting failure note also failed: ${postErr}"
                             }
 
-                            def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${env.DBM_PACKAGE_NAME}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${env.TASK_ID}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure.")
                             } else {
@@ -414,13 +412,13 @@ Error: ${err}
 
     post {
         always {
-            echo "Completed Create-Package pipeline. TASK_ID=${env.SN_TASK_ID} | Final Status=${env.TASK_STATUS}"
+            echo "Completed Create-Package pipeline. TASK_ID=${env.TASK_ID} | Final Status=${env.TASK_STATUS}"
         }
         success {
             echo "Successfully created package ${env.DBM_PACKAGE_NAME}."
         }
         failure {
-            echo "Pipeline failed for Task ID ${env.SN_TASK_ID}. Review logs for details."
+            echo "Pipeline failed for Task ID ${env.TASK_ID}. Review logs for details."
         }
     }
 }
