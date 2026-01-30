@@ -12,12 +12,12 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'SN_TASK_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
-        choice(name: 'DBM_PROJECT_NAME', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
-        string(name: 'SC_TASK_ID', defaultValue: '', description: 'Source Control task ID (if empty, defaults to Task or CTask ID)')
-        string(name: 'DBM_PACKAGE_NAME', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to Task or CTask ID)')
-        booleanParam(name: 'PACKAGE_ALREADY_EXIST', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
-        booleanParam(name: 'UPGRADE_RS_ENVIRONMENT', defaultValue: false, description: 'If checked, upgrade package in Release Source environment after precheck')
+        string(name: 'ServiceNow_Task_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
+        choice(name: 'DBMaestro_Project_Name', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        string(name: 'Source_Control_Task_ID', defaultValue: '', description: 'Source Control task ID (if empty, defaults to Task or CTask ID)')
+        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to Task or CTask ID)')
+        booleanParam(name: 'Package_Already_Exist', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
+        booleanParam(name: 'Upgrade_RS_Environment', defaultValue: false, description: 'If checked, upgrade package in Release Source environment after precheck')
     }
 
     environment {
@@ -27,9 +27,9 @@ pipeline {
         // DBmaestro configuration
         DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
         DBM_AGENT_ENDPOINT = 'localhost:8017'
-        DBM_ENV_NAME_DEV = "dev_${params.DBM_PROJECT_NAME}"
-        DBM_ENV_NAME = "rs_${params.DBM_PROJECT_NAME}"
-        DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
+        DBM_ENV_NAME_DEV = "dev_${params.DBMaestro_Project_Name}"
+        DBM_ENV_NAME = "rs_${params.DBMaestro_Project_Name}"
+        DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
         DBM_USE_SSL = 'True'
     }
@@ -38,24 +38,24 @@ pipeline {
         stage('Validate Parameters') {
             steps {
                     script {
-                        if (!params.SN_TASK_ID?.trim()) {
-                            error("SN_TASK_ID parameter is required. Provide a ServiceNow Task ID.")
+                        if (!params.ServiceNow_Task_ID?.trim()) {
+                            error("ServiceNow_Task_ID parameter is required. Provide a ServiceNow Task ID.")
                         }
-                        env.SN_TASK_ID = params.SN_TASK_ID.trim()
+                        env.ServiceNow_Task_ID = params.ServiceNow_Task_ID.trim()
                         
-                        // Determine ServiceNow table based on SN_TASK_ID prefix
-                        if (env.SN_TASK_ID.startsWith('CTASK')) {
+                        // Determine ServiceNow table based on ServiceNow_Task_ID prefix
+                        if (env.ServiceNow_Task_ID.startsWith('CTASK')) {
                             env.SERVICENOW_TABLE = 'change_task'
-                        } else if (env.SN_TASK_ID.startsWith('TASK')) {
+                        } else if (env.ServiceNow_Task_ID.startsWith('TASK')) {
                             env.SERVICENOW_TABLE = 'sc_task'
                         } else {
-                            error("SN_TASK_ID must start with 'TASK' or 'CTASK'. Provided: ${env.SN_TASK_ID}")
+                            error("ServiceNow_Task_ID must start with 'TASK' or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
                         }
                         
-                        echo "Using Task ID: ${env.SN_TASK_ID} (Table: ${env.SERVICENOW_TABLE})"
+                        echo "Using Task ID: ${env.ServiceNow_Task_ID} (Table: ${env.SERVICENOW_TABLE})"
 
                         // Set build display name to the Task ID
-                        currentBuild.displayName = "${env.SN_TASK_ID}"
+                        currentBuild.displayName = "${env.ServiceNow_Task_ID}"
                     }
             }
         }
@@ -64,12 +64,12 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
-                        echo "Querying ServiceNow for Task ID: ${env.SN_TASK_ID}"
+                        echo "Querying ServiceNow for Task ID: ${env.ServiceNow_Task_ID}"
 
                         def response = powershell(returnStdout: true, script: """
                             \$endpoint = "\$env:SERVICENOW_ENDPOINT"
                             \$table = "\$env:SERVICENOW_TABLE"
-                            \$taskId = "${env.SN_TASK_ID}"
+                            \$taskId = "${env.ServiceNow_Task_ID}"
                             
                             # Build the URL with proper query encoding and field restriction
                             \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
@@ -107,7 +107,7 @@ pipeline {
 
 
                         if (response == "NOT_FOUND") {
-                            error("Task ID ${env.SN_TASK_ID} not found in ServiceNow.")
+                            error("Task ID ${env.ServiceNow_Task_ID} not found in ServiceNow.")
                         } else if (response.isEmpty() || response.startsWith("ERROR")) {
                             error("Failed to query ServiceNow: ${response}")
                         }
@@ -119,20 +119,20 @@ pipeline {
                         env.TASK_SHORT_DESC = taskInfo.short_description ?: 'N/A'
                         env.TASK_SYS_ID = taskInfo.sys_id ?: ''
                         
-                        // Set DBM_PACKAGE_NAME to parent display_value if available, otherwise to SN_TASK_ID
-                        if (params.DBM_PACKAGE_NAME?.trim()) {
-                            env.DBM_PACKAGE_NAME = params.DBM_PACKAGE_NAME.trim()
+                        // Set DBMaestro_Package_Name to parent display_value if available, otherwise to ServiceNow_Task_ID
+                        if (params.DBMaestro_Package_Name?.trim()) {
+                            env.DBMaestro_Package_Name = params.DBMaestro_Package_Name.trim()
                         } else {
-                            env.DBM_PACKAGE_NAME = env.SN_TASK_ID
+                            env.DBMaestro_Package_Name = env.ServiceNow_Task_ID
                         }
-                        echo "Using DBmaestro Package Name: ${env.DBM_PACKAGE_NAME}"
+                        echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
                         
                         // Check if Task ID is in closed state (state contains "Closed")
                         if (env.TASK_STATUS?.contains("Closed")) {
-                            error("Task ID ${env.SN_TASK_ID} is in closed state and cannot be processed.")
+                            error("Task ID ${env.ServiceNow_Task_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Task ID: ${env.SN_TASK_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
+                        echo "Found Task ID: ${env.ServiceNow_Task_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
@@ -140,12 +140,12 @@ pipeline {
 
         stage('Create Package in DBmaestro') {
             when {
-                expression { !params.PACKAGE_ALREADY_EXIST }
+                expression { !params.Package_Already_Exist }
             }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "${env.DBM_JAR_PATH}" -Build -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_DEV}" -VersionType "Tasks" -AdditionalInformation "${env.SC_TASK_ID}" -CreatePackage True -PackageName "${env.DBM_PACKAGE_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "${env.DBM_JAR_PATH}" -Build -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME_DEV}" -VersionType "Tasks" -AdditionalInformation "${env.Source_Control_Task_ID}" -CreatePackage True -PackageName "${env.DBMaestro_Package_Name}" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -155,7 +155,7 @@ pipeline {
         // Doesn't work for CTASKS
         stage('Post Comment: Package Created') {
             when {
-                expression { !params.PACKAGE_ALREADY_EXIST }
+                expression { !params.Package_Already_Exist }
             }
             steps {
                 script {
@@ -171,7 +171,7 @@ pipeline {
                             \$buildUrl = "${env.BUILD_URL}".TrimEnd('/')
                             \$overviewUrl = "\$buildUrl/pipeline-overview"
                             \$message = @"
-DBmaestro package ${env.DBM_PACKAGE_NAME} created
+DBmaestro package ${env.DBMaestro_Package_Name} created
 
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
@@ -213,7 +213,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
-                    java -jar "${env.DBM_JAR_PATH}" -PreCheck -ProjectName "${env.DBM_PROJECT_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -PackageName "${env.DBM_PACKAGE_NAME}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    java -jar "${env.DBM_JAR_PATH}" -PreCheck -ProjectName "${env.DBM_PROJECT_NAME}" -Server "${env.DBM_AGENT_ENDPOINT}" -PackageName "${env.DBMaestro_Package_Name}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     """
                 }
             }
@@ -240,7 +240,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                             \$message = @"
 DBmaestro precheck completed
 
-Package: ${env.DBM_PACKAGE_NAME}
+Package: ${env.DBMaestro_Package_Name}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 "@
@@ -278,7 +278,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 
     stage('Upgrade Target Environment') {
             when {
-                expression { params.UPGRADE_RS_ENVIRONMENT }
+                expression { params.Upgrade_RS_Environment }
             }
             steps {
                 script {
@@ -287,10 +287,10 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
                         try {
                             withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                                 powershell """
-                                java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME}" -PackageName "${env.DBM_PACKAGE_NAME}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                                java -jar "${env.DBM_JAR_PATH}" -Upgrade -ProjectName "${env.DBM_PROJECT_NAME}" -EnvName "${env.DBM_ENV_NAME}" -PackageName "${env.DBMaestro_Package_Name}" -BackupBehavior True -RestoreBehavior True -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                                 """
                             }
-                            echo "Upgrade succeeded for ${env.DBM_ENV_NAME} - Package: ${env.DBM_PACKAGE_NAME}"
+                            echo "Upgrade succeeded for ${env.DBM_ENV_NAME} - Package: ${env.DBMaestro_Package_Name}"
                             // Post success note to ServiceNow (best-effort)
                             if (env.TASK_SYS_ID?.trim()) {
                                 withCredentials([usernamePassword(credentialsId: 'JENKINS_DBA_USER', usernameVariable: 'SN_USER', passwordVariable: 'SN_PASS'), string(credentialsId: 'servicenow-endpoint', variable: 'SERVICENOW_ENDPOINT')]) {
@@ -308,7 +308,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 Environment upgrade SUCCEEDED
 
 Environment: ${env.DBM_ENV_NAME}
-Package: ${env.DBM_PACKAGE_NAME}
+Package: ${env.DBMaestro_Package_Name}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 "@
@@ -361,7 +361,7 @@ Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 Environment upgrade FAILED
 
 Environment: ${env.DBM_ENV_NAME}
-Package: ${env.DBM_PACKAGE_NAME}
+Package: ${env.DBMaestro_Package_Name}
 Build: ${env.BUILD_NUMBER} (${env.JOB_NAME})
 Build URL: [code]<a href="\$overviewUrl">Pipeline Overview</a>[/code]
 
@@ -399,7 +399,7 @@ Error: ${err}
                                 echo "Posting failure note also failed: ${postErr}"
                             }
 
-                            def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${env.DBM_PACKAGE_NAME}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${env.DBMaestro_Package_Name}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
                             if (action == 'Abort') {
                                 error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure.")
                             } else {
@@ -414,13 +414,13 @@ Error: ${err}
 
     post {
         always {
-            echo "Completed Create-Package pipeline. TASK_ID=${env.SN_TASK_ID} | Final Status=${env.TASK_STATUS}"
+            echo "Completed Create-Package pipeline. TASK_ID=${env.ServiceNow_Task_ID} | Final Status=${env.TASK_STATUS}"
         }
         success {
-            echo "Successfully created package ${env.DBM_PACKAGE_NAME}."
+            echo "Successfully created package ${env.DBMaestro_Package_Name}."
         }
         failure {
-            echo "Pipeline failed for Task ID ${env.SN_TASK_ID}. Review logs for details."
+            echo "Pipeline failed for Task ID ${env.ServiceNow_Task_ID}. Review logs for details."
         }
     }
 }
