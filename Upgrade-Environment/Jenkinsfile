@@ -260,7 +260,9 @@ Error: ${err}
                                     echo "Posting failure note also failed: ${postErr}"
                                 }
 
-                                def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed', timeout: Integer.parseInt(env.INPUT_TIMEOUT)
+                                def action = timeout(time: Integer.parseInt(env.INPUT_TIMEOUT), unit: 'SECONDS') {
+                                    input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                }
                                 if (action == 'Abort') {
                                     error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure on package ${packageName}.")
                                 } else if (action == 'Skip') {
