@@ -1,59 +1,163 @@
 # Jenkins Example Workflow
 
-This repository contains example Jenkins pipelines for running DBmaestro Agent commands based on a TaskID found in your repository.
+This repository contains example Jenkins pipelines for managing DBmaestro packages integrated with ServiceNow task/change request tracking.
 
-The two main pipeline variants in this repo are:
+## Pipeline Overview
 
-- `enact-test/Jenkinsfile`
-  - Behavior: This pipeline polls the repository and will accept a `DBM_TASK_ID` parameter if provided. If no parameter is supplied it will attempt to extract `TaskID:` from the latest commit message. If no TaskID is found the pipeline fails.
-  - Use case: automated runs where you want the pipeline to detect a TaskID from commits, but also optionally allow manual override.
+The repository includes the following main pipelines:
 
-- `enact-test2/Jenkinsfile`
-  - Behavior: This pipeline requires the `DBM_TASK_ID` parameter (no fallback). It validates that the provided TaskID appears in the repository (searches commit messages) before proceeding. This job does not poll SCM and is intended for explicit, parameter-driven runs.
-  - Use case: safety-first, manual or triggered runs where you want to be certain the specified TaskID exists in the repo before making changes.
+### Create-Packages Pipeline
+**File:** `Create-Packages/Jenkinsfile` (v1.0)
 
-Common pipeline behavior
-- Both pipelines perform these high-level actions (in order):
-  1. Checkout the external repository `https://github.com/DBMaestroDev/source-control-example.git` using a configured GitHub credential.
-  2. Determine `TASK_ID` (either from a parameter or by parsing commit messages — depending on pipeline).
-  3. Create a DBmaestro package (Create Package stage).
-  4. Run a Precheck (Precheck Package in DBmaestro stage).
-  5. Optionally wait for manual verification (input step).
-  6. Run the Upgrade step against a Release Source environment.
-  7. Optionally require manual approval and then run the Production Upgrade.
+**Purpose:** Creates a DBmaestro package from Source Control based on a ServiceNow Task or CTask ID.
 
-Required Jenkins configuration
-- Credentials (create these in Jenkins Credentials):
-  - `gh_user_token` — a GitHub personal access token (used by the Git checkout).
-  - `dbm_credentials` — DBmaestro account credentials stored as a username/password credential (the pipeline injects them as `DBM_USER` and `DBM_PASS`).
+**Steps:**
+1. Validates input parameters
+2. Verifies that the provided Task ID exists in ServiceNow and is not closed
+3. Creates a DBmaestro package
+4. Posts a comment to the ServiceNow task indicating package creation
+5. Performs a precheck of the package in DBmaestro
+6. Posts a comment to the ServiceNow task indicating precheck completion
+7. Optionally upgrades the package in the Release Source environment, with retry on failure
 
-- Agent requirements:
-  - The Jenkins agent running these pipelines must have Git and Java available in PATH.
-  - The DBmaestro Agent JAR must be present on the agent machine at the path configured by the pipeline environment variable `DBM_JAR_PATH` (default in examples: `C:\Program Files (x86)\DBmaestro\DOP Server\Agent\DBmaestroAgent.jar`). Adjust as needed for your environment.
-
-Parameters and environment variables (summary)
-- `DBM_TASK_ID` (pipeline parameter)
-  - `enact-test`: optional; if omitted, pipeline will attempt to parse TaskID from the latest commit message.
-  - `enact-test2`: required; pipeline will fail if empty.
-- `DBM_PROJECT_NAME` — name of the DBmaestro project the package belongs to (parameter / env variable depending on pipeline).
-- `DBM_JAR_PATH` — filesystem path to DBmaestroAgent.jar on the agent.
-- `DBM_AGENT_ENDPOINT` — the DBmaestro Agent server endpoint used in the `-Server` argument.
-- `DBM_ENV_NAME_RS`, `DBM_ENV_NAME_PROD`, `DBM_ENV_NAME_DEV` — environment names used for release-source / production / dev upgrades (configured in environment block).
-- `DBM_AUTH_TYPE` — authentication type passed to the DBmaestro agent command (e.g., Basic).
-
-How to use
-1. Create a new Jenkins Pipeline (or Multibranch) job.
-2. Configure credentials in Jenkins as described above (`gh_user_token`, `dbm_credentials`).
-3. Configure the pipeline script path to the desired Jenkinsfile in this repo:
-   - `enact-test/Jenkinsfile` — poll-and-detect behavior.
-   - `enact-test2/Jenkinsfile` — parameter-required + repository verification.
-4. When running the job for `enact-test2`, supply the `DBM_TASK_ID` parameter with the TaskID to enact.
-5. Ensure the Jenkins agent has Java and the DBmaestro JAR available at `DBM_JAR_PATH` (or edit the Jenkinsfile to point to your location).
-
-Security notes
-- Never commit DBmaestro usernames, passwords, tokens, or other secrets to source control. Use Jenkins Credentials (username/password and secret text) and reference them in the pipeline via `withCredentials`. The example pipelines are already written to use a `dbm_credentials` username/password credential and a `gh_user_token` for Git.
-
+**Parameters:**
+- `ServiceNow_Task_ID` (required) — ServiceNow Task or CTask ID (e.g., TASK0000001, SCTASK0000001, CTASK0000001)
+- `DBMaestro_Project_Name` (required) — DBmaestro project name
+- `Source_Control_Task_ID` (optional) — Source Control task ID; defaults to Task ID if empty
+- `DBMaestro_Package_Name` (optional) — DBmaestro package name; defaults to Task ID if empty
+- `Package_Already_Exist` (optional) — Skip package creation if package already exists
+- `Upgrade_RS_Environment` (optional) — Upgrade package in Release Source environment after precheck
 
 ---
-Generated: updated to document `enact-test` and `enact-test2` pipeline behaviors and required Jenkins configuration.
-Jenkins Example Workflow
+
+### Upgrade-Environment Pipeline
+**File:** `Upgrade-Environment/Jenkinsfile` (v1.0)
+
+**Purpose:** Upgrades a target environment with a list of packages.
+
+**Steps:**
+1. Validates input parameters
+2. Verifies that the provided Task ID exists in ServiceNow and is not closed
+3. Upgrades the target environment with the specified packages (with per-package retry/skip/abort logic)
+4. Posts per-package success/failure notes to ServiceNow
+5. Reports any failed packages
+
+**Parameters:**
+- `ServiceNow_Task_ID` (required) — ServiceNow Task or CTask ID
+- `DBMaestro_Project_Name` (required) — DBmaestro project name
+- `Target_Environment` (required) — Target environment prefix for upgrade (rs, qa, stage, prod)
+- `DBMaestro_Package_Name` (optional) — Comma-separated list of package names; defaults to Task ID if empty
+
+**Features:**
+- Supports comma-separated package names for batch upgrades
+- Per-package retry/skip/abort options on failure
+- 1-hour timeout for user input prompts
+- Per-package ServiceNow activity posting
+
+---
+
+### Get-Packages Pipeline
+**File:** `Get-Package-List/Jenkinsfile`
+
+**Purpose:** Retrieves and displays list of packages from a DBmaestro project.
+
+**Steps:**
+1. Queries DBmaestro Agent for enabled packages
+2. Parses and displays package information in table format
+3. Archives the packages.json file
+
+**Parameters:**
+- `DBMaestro_Project_Name` (required) — DBmaestro project name
+
+---
+
+### ServiceNow Integration Pipelines
+Additional pipelines for ServiceNow workflow automation:
+- `servicenow-change-workflow/Jenkinsfile` — Manages change requests with Release Source and Production upgrades
+- `servicenow-task-process/Jenkinsfile` — Processes task-based workflows
+
+---
+
+## ServiceNow Task ID Support
+
+The pipelines support three types of ServiceNow Task IDs:
+- **TASK** — Standard service request task (uses `sc_task` table)
+- **SCTASK** — Service catalog task (uses `sc_task` table)
+- **CTASK** — Change task (uses `change_task` table)
+
+The pipeline automatically detects the task type and queries the correct ServiceNow table.
+
+---
+
+## Required Jenkins Configuration
+
+### Credentials
+Create the following credentials in Jenkins Credentials store:
+
+- **`JENKINS_DBA_USER`** — Username/password credential for ServiceNow API access
+- **`servicenow-endpoint`** — Secret text containing the ServiceNow instance URL (e.g., https://dev317594.service-now.com)
+- **`dbmaestro-user-automation-token`** — Username/password credential for DBmaestro Agent authentication
+
+### Agent Requirements
+- Jenkins agent running the pipelines must have:
+  - **Java** (for running DBmaestroAgent.jar)
+  - **PowerShell** 5.1 or higher (for REST API calls and script execution)
+  
+- **DBmaestro Agent JAR** must be present at the path configured in pipeline environment variables (default: `C:\Program Files (x86)\DBmaestro\DOP Server\Agent\DBmaestroAgent.jar`)
+
+---
+
+## Environment Variables
+
+Common environment variables configured in pipelines:
+
+- `DBM_JAR_PATH` — Filesystem path to DBmaestroAgent.jar on the agent
+- `DBM_AGENT_ENDPOINT` — DBmaestro Agent server endpoint (e.g., localhost:8017)
+- `DBM_PROJECT_NAME` — DBmaestro project name (derived from parameter)
+- `DBM_ENV_NAME` — Target environment name (e.g., rs_CHGMTEST, qa_CHGMTEST)
+- `DBM_AUTH_TYPE` — Authentication type for DBmaestro (e.g., DBmaestroAccount, Domain)
+- `DBM_USE_SSL` — Enable SSL for DBmaestro communication (True/False)
+- `SERVICENOW_TABLE` — ServiceNow table name (sc_task or change_task, auto-detected)
+- `INPUT_TIMEOUT` — User input prompt timeout in seconds (default: 3600 = 1 hour)
+
+---
+
+## How to Use
+
+1. **Create a new Jenkins Pipeline job**
+   - New Item → Pipeline
+   - Configure the pipeline script path to the desired Jenkinsfile
+
+2. **Configure Jenkins Credentials** (as described above)
+   - Manage Jenkins → Credentials → System → Global credentials
+   - Add the required credentials
+
+3. **Run the pipeline**
+   - Provide the required parameters
+   - Pipeline will validate parameters, query ServiceNow, execute DBmaestro commands, and post activity back to ServiceNow
+
+4. **Monitor progress**
+   - For operations with per-package execution, respond to input prompts within the timeout period (1 hour)
+   - Review ServiceNow activity notes for success/failure status
+
+---
+
+## Security Notes
+
+- **Never commit secrets** to source control
+- Use Jenkins Credentials (username/password, secret text) for all sensitive data
+- ServiceNow credentials must have API access permissions
+- DBmaestro credentials must have appropriate project and environment permissions
+
+---
+
+## SSL/TLS Handling
+
+The pipelines use `System.Net.WebClient` for ServiceNow API calls with the following SSL/TLS configuration:
+- ServerCertificateValidationCallback enabled (bypasses self-signed cert warnings)
+- TLS 1.1 and 1.2 support
+- Certificate revocation list check disabled
+
+---
+
+Generated: Updated to document Create-Packages, Upgrade-Environment, and Get-Packages pipelines with ServiceNow integration.
