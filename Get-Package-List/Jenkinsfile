@@ -2,15 +2,14 @@ pipeline {
     agent any
 
     parameters {
-        choice(name: 'DBM_PROJECT_NAME', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        choice(name: 'DBMaestro_Project_Name', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
     }
 
     environment {
         // DBmaestro configuration
         DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
         DBM_AGENT_ENDPOINT = 'localhost:8017'
-        DBM_ENV_NAME = "${params.TARGET_ENVIRONMENT}_${params.DBM_PROJECT_NAME}"
-        DBM_PROJECT_NAME = "${params.DBM_PROJECT_NAME}"
+        DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
         DBM_USE_SSL = 'True'
     }
@@ -18,12 +17,12 @@ pipeline {
     stages {
         stage('Get Packages from DBmaestro') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dbm_credentials', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
                     powershell """
                     \$outFile = "packages.json"
 
                     Write-Output "Running DBmaestroAgent -GetPackages..."
-                    & java -jar "\$env:DBM_JAR_PATH" -GetPackages -ProjectName "\$env:DBM_PROJECT_NAME" -FilePath "\$outFile" -Server "\$env:DBM_AGENT_ENDPOINT" -UseSSL "\$env:DBM_USE_SSL" -AuthType "\$env:DBM_AUTH_TYPE" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
+                    & java -jar "${env.DBM_JAR_PATH}" -GetPackages -ProjectName "${env.DBM_PROJECT_NAME}" -FilePath "\$outFile" -Server "${env.DBM_AGENT_ENDPOINT}" -UseSSL "${env.DBM_USE_SSL}" -AuthType "${env.DBM_AUTH_TYPE}" -UserName "\$env:DBM_USER" -Password "\$env:DBM_PASS"
                     
                     if (Test-Path \$outFile) {
                         Write-Output "Successfully created: \$outFile"

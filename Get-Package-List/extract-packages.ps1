@@ -41,5 +41,5 @@ try {
 # Filter where IsEnabled is true and display requested fields
 $items |
     Where-Object { $_.IsEnabled -eq $true } |
-    Select-Object Name, State, IsAdhocPackage, TestResult |
+    Select-Object Name, @{Name='Deployed';Expression={$_.State}}, IsAdhocPackage, TestResult |
     Format-Table -AutoSize
