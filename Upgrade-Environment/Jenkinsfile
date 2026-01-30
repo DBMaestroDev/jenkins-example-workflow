@@ -48,10 +48,10 @@ pipeline {
                         // Determine ServiceNow table based on ServiceNow_Task_ID prefix
                         if (env.ServiceNow_Task_ID.startsWith('CTASK')) {
                             env.SERVICENOW_TABLE = 'change_task'
-                        } else if (env.ServiceNow_Task_ID.startsWith('TASK')) {
+                        } else if (env.ServiceNow_Task_ID.startsWith('TASK') || env.ServiceNow_Task_ID.startsWith('SCTASK')) {
                             env.SERVICENOW_TABLE = 'sc_task'
                         } else {
-                            error("ServiceNow_Task_ID must start with 'TASK' or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
+                            error("ServiceNow_Task_ID must start with 'TASK', 'SCTASK', or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
                         }
                         
                         echo "Using Task ID: ${env.ServiceNow_Task_ID} (Table: ${env.SERVICENOW_TABLE})"
