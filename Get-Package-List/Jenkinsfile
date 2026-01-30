@@ -37,7 +37,7 @@ pipeline {
         stage('Parse and Display Packages') {
             steps {
                 powershell """
-                \$scriptPath = Join-Path \$PWD "get-packages\\extract-packages.ps1"
+                \$scriptPath = Join-Path \$PWD "Get-Package-List\\extract-packages.ps1"
                 \$packagesFile = "packages.json"
                 
                 if (-not (Test-Path \$packagesFile)) {
