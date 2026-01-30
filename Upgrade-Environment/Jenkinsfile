@@ -26,6 +26,9 @@ pipeline {
         DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
         DBM_USE_SSL = 'True'
+        
+        // Input timeout (in seconds) - 1 hour
+        INPUT_TIMEOUT = '3600'
     }
 
     stages {
@@ -257,7 +260,7 @@ Error: ${err}
                                     echo "Posting failure note also failed: ${postErr}"
                                 }
 
-                                def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                def action = input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed', timeout: Integer.parseInt(env.INPUT_TIMEOUT)
                                 if (action == 'Abort') {
                                     error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure on package ${packageName}.")
                                 } else if (action == 'Skip') {
