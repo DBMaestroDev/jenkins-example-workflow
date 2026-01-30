@@ -44,7 +44,7 @@ pipeline {
                         }
                         env.ServiceNow_Task_ID = params.ServiceNow_Task_ID.trim()
 
-                        // If DBMaestro_Package_Name is not provided, use ServiceNow_Task_ID
+                        // Set DBMaestro_Package_Name if available, otherwise to ServiceNow_Task_ID
                         if (params.DBMaestro_Package_Name?.trim()) {
                             env.DBMaestro_Package_Name = params.DBMaestro_Package_Name.trim()
                         } else {
@@ -52,14 +52,14 @@ pipeline {
                         }
                         echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
 
-                        // If Source_Control_Task_ID is not provided use ServiceNow_Task_ID
-                        if (!params.Source_Control_Task_ID?.trim()) {
-                           env.Source_Control_Task_ID = params.ServiceNow_Task_ID.trim()
-                        } else {
+                        // Set Source_Control_Task_ID if available, otherwise to ServiceNow_Task_ID
+                        if (params.Source_Control_Task_ID?.trim()) {
                            env.Source_Control_Task_ID = params.Source_Control_Task_ID.trim()
+                        } else {
+                           env.Source_Control_Task_ID = env.ServiceNow_Task_ID
                         }
                         echo "Using Source Control Task ID: ${env.Source_Control_Task_ID}"
-                        
+
                         // Determine ServiceNow table based on ServiceNow_Task_ID prefix
                         if (env.ServiceNow_Task_ID.startsWith('CTASK')) {
                             env.SERVICENOW_TABLE = 'change_task'
