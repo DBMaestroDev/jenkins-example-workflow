@@ -75,7 +75,7 @@ pipeline {
                             
                             # Build the URL with proper query encoding and field restriction
                             \$queryValue = [Uri]::EscapeDataString("number=\$taskId")
-                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,parent")
+                            \$fieldsValue = [Uri]::EscapeDataString("number,state,sys_id,short_description")
                             \$url = \$endpoint + "/api/now/table/" + \$table + "?sysparm_query=" + \$queryValue + "&sysparm_fields=" + \$fieldsValue + "&sysparm_limit=1&sysparm_display_value=true"
                             
                             \$username = "\$env:SN_USER"
@@ -114,7 +114,7 @@ pipeline {
                             error("Failed to query ServiceNow: ${response}")
                         }
 
-                        // Parse JSON response and extract status, sys_id, parent info and other details
+                        // Parse JSON response and extract status, sys_id, and other details
                         def jsonSlurper = new groovy.json.JsonSlurper()
                         def taskInfo = jsonSlurper.parseText(response)
                         env.TASK_STATUS = taskInfo.state ?: 'unknown'
@@ -126,7 +126,7 @@ pipeline {
                             error("Task ID ${env.ServiceNow_Task_ID} is in closed state and cannot be processed.")
                         }
                         
-                        echo "Found Task ID: ${env.ServiceNow_Task_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Parent: ${env.TASK_PARENT_DISPLAY_VALUE} | Description: ${env.TASK_SHORT_DESC}"
+                        echo "Found Task ID: ${env.ServiceNow_Task_ID} | sys_id: ${env.TASK_SYS_ID} | Status: ${env.TASK_STATUS} | Description: ${env.TASK_SHORT_DESC}"
                     }
                 }
             }
