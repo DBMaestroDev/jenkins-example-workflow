@@ -1,5 +1,5 @@
 pipeline {
-    // version: 1.0
+    // version: 1.1
     // This pipeline upgrades a target environment with a list of packages.
     // It performs the following steps:
     // 1. Validates input parameters
@@ -9,10 +9,10 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'ServiceNow_Task_ID', defaultValue: 'TASK0000001', description: 'ServiceNow Task or CTask ID (e.g., TASK0000001)')
+        string(name: 'ServiceNow_Task_ID', defaultValue: 'RITM0000001', description: 'ServiceNow RITM, Task, CTask or CHG ID (e.g., RITM0000001)')
         choice(name: 'DBMaestro_Project_Name', choices: ['CHGMTEST', 'GUIDE', 'Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
         choice(name: 'Target_Environment', choices: ['rs', 'qa', 'stage', 'prod'], description: 'Target environment prefix for upgrade')
-        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to Task ID')
+        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to ServiceNow_Task_ID')
     }
 
     environment {
@@ -48,12 +48,22 @@ pipeline {
                         echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
                         
                         // Determine ServiceNow table based on ServiceNow_Task_ID prefix
-                        if (env.ServiceNow_Task_ID.startsWith('CTASK')) {
-                            env.SERVICENOW_TABLE = 'change_task'
-                        } else if (env.ServiceNow_Task_ID.startsWith('TASK') || env.ServiceNow_Task_ID.startsWith('SCTASK')) {
-                            env.SERVICENOW_TABLE = 'sc_task'
-                        } else {
-                            error("ServiceNow_Task_ID must start with 'TASK', 'SCTASK', or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
+                        switch(true) {
+                            case env.ServiceNow_Task_ID.startsWith('RITM'):
+                                env.SERVICENOW_TABLE = 'sc_req_item'
+                                break
+                            case env.ServiceNow_Task_ID.startsWith('CHG'):
+                                env.SERVICENOW_TABLE = 'change_request'
+                                break
+                            case env.ServiceNow_Task_ID.startsWith('CTASK'):
+                                env.SERVICENOW_TABLE = 'change_task'
+                                break
+                            case env.ServiceNow_Task_ID.startsWith('TASK'):
+                            case env.ServiceNow_Task_ID.startsWith('SCTASK'):
+                                env.SERVICENOW_TABLE = 'sc_task'
+                                break
+                            default:
+                                error("ServiceNow_Task_ID must start with 'RITM', 'CHG', 'TASK', 'SCTASK', or 'CTASK'. Provided: ${env.ServiceNow_Task_ID}")
                         }
                         
                         echo "Using Task ID: ${env.ServiceNow_Task_ID} (Table: ${env.SERVICENOW_TABLE})"
