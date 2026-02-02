@@ -24,7 +24,7 @@ pipeline {
         DBM_ENV_NAME_RS = "Release Source"
         DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
         DBM_AUTH_TYPE = 'DBmaestroAccount'
-        DBM_USE_SSL = 'False'
+        DBM_USE_SSL = 'True'
     }
 
     stages {
