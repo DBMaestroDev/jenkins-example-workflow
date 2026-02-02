@@ -15,6 +15,12 @@ pipeline {
     //   Retry: Attempt the upgrade again for the same package
     //   Skip: Move to the next package (marks current as failed)
     //   Abort: Stop the pipeline
+    //
+    // Requirements:
+    // - Jenkins agent with PowerShell and Java installed
+    // - DBmaestro Agent JAR file accessible on Jenkins agent
+    // - Jenkins credentials configured for DBmaestro access ('dbmaestro-user-automation-token' in this example)
+    // - Validate the environment variables and adjust as needed
 
     agent any
 
