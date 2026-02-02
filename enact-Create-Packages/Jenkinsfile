@@ -1,5 +1,5 @@
 pipeline {
-    // version: 1.0
+    // version: 1.1
     // This pipeline creates a DBmaestro package from Source Control based on a ServiceNow Task or CTask ID.
     // It performs the following steps:
     // 1. Validates input parameters
