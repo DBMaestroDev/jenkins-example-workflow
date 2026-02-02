@@ -1,11 +1,23 @@
 pipeline {
     // version: 1.0
-    // This pipeline creates a DBmaestro package from Source Control Task ID
+    // This pipeline creates a DBmaestro package from Source Control and optionally upgrades a target environment.
     // It performs the following steps:
-    // 1. Validates input parameters (Source_Control_Task_ID and DBmaestro_Package_Name)
-    // 2. Creates a DBmaestro package using Source_Control_Task_ID
-    // 3. Performs a precheck of the package in DBmaestro
-    // 4. Optionally upgrades the package in the target environment, with retry on failure
+    // 1. Validates that Source_Control_Task_ID is provided (required parameter)
+    // 2. Creates a DBmaestro package from source control (skippable if package already exists)
+    // 3. Performs a precheck of the package in DBmaestro to validate deployment readiness
+    // 4. Optionally upgrades the package in Release Source environment, with retry/abort on failure
+    //
+    // Parameters:
+    // - DBMaestro_Project_Name: The DBmaestro project (required)
+    // - Source_Control_Task_ID: Source control task identifier for package creation (required)
+    // - DBMaestro_Package_Name: Package name in DBmaestro (if empty, defaults to Source_Control_Task_ID)
+    // - Package_Already_Exist: If checked, skips package creation step (use existing package)
+    // - Upgrade_RS_Environment: If checked, upgrades package in Release Source after precheck
+    //
+    // On upgrade failure, user can choose to:
+    //   Retry: Attempt the upgrade again
+    //   Abort: Stop the pipeline
+
     agent any
 
     parameters {
