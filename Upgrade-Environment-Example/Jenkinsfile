@@ -1,0 +1,124 @@
+pipeline {
+    // version: 1.0
+    // This pipeline upgrades a target environment with a list of packages using Source Control Task ID.
+    // It performs the following steps:
+    // 1. Validates input parameters
+    // 2. Upgrades the target environment with the specified packages
+    // 3. Implements retry logic with user input on failure
+
+    agent any
+
+    parameters {
+        string(name: 'Source_Control_Task_ID', defaultValue: '', description: 'Source Control task ID (required)')
+        choice(name: 'DBMaestro_Project_Name', choices: ['Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        choice(name: 'Target_Environment', choices: ['Release Source', 'QA_Env_1', 'UAT_Env_1', 'Prod_Env_1'], description: 'Target environment prefix for upgrade')
+        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package list (separated with commas), if empty, defaults to Source Control Task ID')
+    }
+
+    environment {
+        // DBmaestro configuration
+        DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+        DBM_AGENT_ENDPOINT = 'localhost:8017'
+        DBM_ENV_NAME = "${params.Target_Environment}"
+        DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
+        DBM_USE_SSL = 'True'
+        // Input timeout (in seconds) - 1 hour
+        INPUT_TIMEOUT = '3600'
+    }
+
+    stages {
+        stage('Validate Parameters') {
+            steps {
+                    script {
+                        if (!params.Source_Control_Task_ID?.trim()) {
+                            error("Source_Control_Task_ID parameter is required.")
+                        }
+                        env.Source_Control_Task_ID = params.Source_Control_Task_ID.trim()
+
+                        // Set DBMaestro_Package_Name if available, otherwise to Source_Control_Task_ID
+                        if (params.DBMaestro_Package_Name?.trim()) {
+                            env.DBMaestro_Package_Name = params.DBMaestro_Package_Name.trim()
+                        } else {
+                            env.DBMaestro_Package_Name = env.Source_Control_Task_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
+                        echo "Using Source Control Task ID: ${env.Source_Control_Task_ID}"
+
+                        // Set build display name to the Source Control Task ID
+                        currentBuild.displayName = "${env.Source_Control_Task_ID}"
+                    }
+            }
+        }
+
+        stage('Upgrade Target Environment') {
+            steps {
+                script {
+                    def packageList = "${env.DBMaestro_Package_Name}".split(',').collect { it.trim() }
+                    def failedPackages = []
+
+                    packageList.each { packageName ->
+                        echo "Processing package: ${packageName}"
+                        def keepTrying = true
+                        while (keepTrying) {
+                            try {
+                                withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                    powershell """
+                                    java -jar "${env.DBM_JAR_PATH}" `
+                                        -Upgrade `
+                                        -ProjectName "${env.DBM_PROJECT_NAME}" `
+                                        -EnvName "${env.DBM_ENV_NAME}" `
+                                        -PackageName "${packageName}" `
+                                        -BackupBehavior True `
+                                        -RestoreBehavior True `
+                                        -Server "${env.DBM_AGENT_ENDPOINT}" `
+                                        -UseSSL "${env.DBM_USE_SSL}" `
+                                        -AuthType "${env.DBM_AUTH_TYPE}" `
+                                        -UserName "\$env:DBM_USER" `
+                                        -Password "\$env:DBM_PASS"
+                                    """
+                                }
+                                echo "Upgrade succeeded for ${env.DBM_ENV_NAME} - Package: ${packageName}"
+                                keepTrying = false
+                            } catch (err) {
+                                echo "Upgrade attempt failed for package ${packageName}: ${err}"
+
+                                def action = timeout(time: Integer.parseInt(env.INPUT_TIMEOUT), unit: 'SECONDS') {
+                                    input message: "Upgrade to ${env.DBM_ENV_NAME} failed for package ${packageName}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nSkip\nAbort', description: 'Retry will attempt the upgrade again; Skip will move to the next package; Abort will stop the pipeline.')], ok: 'Proceed'
+                                }
+                                if (action == 'Abort') {
+                                    error("Upgrade to ${env.DBM_ENV_NAME} aborted by user after failure on package ${packageName}.")
+                                } else if (action == 'Skip') {
+                                    failedPackages.add(packageName)
+                                    keepTrying = false
+                                    echo "Skipping package ${packageName} and moving to next..."
+                                } else {
+                                    echo "User chose to retry the upgrade for package ${packageName}. Retrying..."
+                                }
+                            }
+                        }
+                    }
+
+                    // Report any failed packages
+                    if (failedPackages.size() > 0) {
+                        echo "WARNING: The following packages failed to upgrade: ${failedPackages.join(', ')}"
+                    } else {
+                        echo "All packages upgraded successfully to ${env.DBM_ENV_NAME}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Completed Upgrade pipeline. Source_Control_Task_ID=${env.Source_Control_Task_ID}"
+        }
+        success {
+            echo "Successfully upgraded packages ${env.DBMaestro_Package_Name} on ${env.DBM_ENV_NAME}."
+        }
+        failure {
+            echo "Pipeline failed. Review logs for details."
+        }
+    }
+}
