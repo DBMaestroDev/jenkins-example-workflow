@@ -1,0 +1,152 @@
+pipeline {
+    // version: 1.0
+    // This pipeline creates a DBmaestro package from Source Control Task ID
+    // It performs the following steps:
+    // 1. Validates input parameters (Source_Control_Task_ID and DBmaestro_Package_Name)
+    // 2. Creates a DBmaestro package using Source_Control_Task_ID
+    // 3. Performs a precheck of the package in DBmaestro
+    // 4. Optionally upgrades the package in the target environment, with retry on failure
+    agent any
+
+    parameters {
+        choice(name: 'DBMaestro_Project_Name', choices: ['Demo-PSQL', 'DemoProject2', 'DemoProject3', 'DemoProject4'], description: 'DBmaestro project name')
+        string(name: 'Source_Control_Task_ID', defaultValue: '', description: 'Source Control task ID (required)')
+        string(name: 'DBMaestro_Package_Name', defaultValue: '', description: 'DBmaestro package name (if empty, defaults to Source Control Task ID)')
+        booleanParam(name: 'Package_Already_Exist', defaultValue: false, description: 'If checked, skip package creation (package already exists in DBmaestro)')
+        booleanParam(name: 'Upgrade_RS_Environment', defaultValue: false, description: 'If checked, upgrade package in Release Source environment after precheck')
+    }
+
+    environment {
+        // DBmaestro configuration
+        DBM_JAR_PATH = 'C:\\Program Files (x86)\\DBmaestro\\DOP Server\\Agent\\DBmaestroAgent.jar'
+        DBM_AGENT_ENDPOINT = 'localhost:8017'
+        DBM_ENV_NAME_DEV = "Dev_Env_1"
+        DBM_ENV_NAME_RS = "Release Source"
+        DBM_PROJECT_NAME = "${params.DBMaestro_Project_Name}"
+        DBM_AUTH_TYPE = 'DBmaestroAccount'
+        DBM_USE_SSL = 'False'
+    }
+
+    stages {
+        stage('Validate Parameters') {
+            steps {
+                    script {
+                        // Make sure Source_Control_Task_ID is provided
+                        if (!params.Source_Control_Task_ID?.trim()) {
+                            error("Source_Control_Task_ID parameter is required.")
+                        }
+                        env.Source_Control_Task_ID = params.Source_Control_Task_ID.trim()
+
+                        // Set DBMaestro_Package_Name if available, otherwise to Source_Control_Task_ID
+                        if (params.DBMaestro_Package_Name?.trim()) {
+                            env.DBMaestro_Package_Name = params.DBMaestro_Package_Name.trim()
+                        } else {
+                            env.DBMaestro_Package_Name = env.Source_Control_Task_ID
+                        }
+                        echo "Using DBmaestro Package Name: ${env.DBMaestro_Package_Name}"
+                        echo "Using Source Control Task ID: ${env.Source_Control_Task_ID}"
+
+                        // Set build display name to the Source Control Task ID
+                        currentBuild.displayName = "${env.Source_Control_Task_ID}"
+                    }
+            }
+        }
+
+        stage('Create Package in DBmaestro') {
+            when {
+                expression { !params.Package_Already_Exist }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "${env.DBM_JAR_PATH}" `
+                        -Build `
+                        -ProjectName "${env.DBM_PROJECT_NAME}" `
+                        -EnvName "${env.DBM_ENV_NAME_DEV}" `
+                        -VersionType "Tasks" `
+                        -AdditionalInformation "${env.Source_Control_Task_ID}" `
+                        -CreatePackage True `
+                        -PackageName "${env.DBMaestro_Package_Name}" `
+                        -Server "${env.DBM_AGENT_ENDPOINT}" `
+                        -UseSSL "${env.DBM_USE_SSL}" `
+                        -AuthType "${env.DBM_AUTH_TYPE}" `
+                        -UserName "\$env:DBM_USER" `
+                        -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+        stage('Precheck Package in DBmaestro') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                    powershell """
+                    java -jar "${env.DBM_JAR_PATH}" `
+                        -PreCheck `
+                        -ProjectName "${env.DBM_PROJECT_NAME}" `
+                        -Server "${env.DBM_AGENT_ENDPOINT}" `
+                        -PackageName "${env.DBMaestro_Package_Name}" `
+                        -UseSSL "${env.DBM_USE_SSL}" `
+                        -AuthType "${env.DBM_AUTH_TYPE}" `
+                        -UserName "\$env:DBM_USER" `
+                        -Password "\$env:DBM_PASS"
+                    """
+                }
+            }
+        }
+
+    stage('Upgrade Target Environment') {
+            when {
+                expression { params.Upgrade_RS_Environment }
+            }
+            steps {
+                script {
+                    def keepTrying = true
+                    while (keepTrying) {
+                        try {
+                            withCredentials([usernamePassword(credentialsId: 'dbmaestro-user-automation-token', usernameVariable: 'DBM_USER', passwordVariable: 'DBM_PASS')]) {
+                                powershell """
+                                java -jar "${env.DBM_JAR_PATH}" `
+                                    -Upgrade `
+                                    -ProjectName "${env.DBM_PROJECT_NAME}" `
+                                    -EnvName "${env.DBM_ENV_NAME_RS}" `
+                                    -PackageName "${env.DBMaestro_Package_Name}" `
+                                    -BackupBehavior True `
+                                    -RestoreBehavior True `
+                                    -Server "${env.DBM_AGENT_ENDPOINT}" `
+                                    -UseSSL "${env.DBM_USE_SSL}" `
+                                    -AuthType "${env.DBM_AUTH_TYPE}" `
+                                    -UserName "\$env:DBM_USER" `
+                                    -Password "\$env:DBM_PASS"
+                                """
+                            }
+                            echo "Upgrade succeeded for ${env.DBM_ENV_NAME_RS} - Package: ${env.DBMaestro_Package_Name}"
+                            keepTrying = false
+                        } catch (err) {
+                            echo "Upgrade attempt failed: ${err}"
+
+                            def action = input message: "Upgrade to ${env.DBM_ENV_NAME_RS} failed for package ${env.DBMaestro_Package_Name}. Choose action:", parameters: [choice(name: 'ACTION', choices: 'Retry\nAbort', description: 'Retry will attempt the upgrade again; Abort will stop the pipeline.')], ok: 'Proceed'
+                            if (action == 'Abort') {
+                                error("Upgrade to ${env.DBM_ENV_NAME_RS} aborted by user after failure.")
+                            } else {
+                                echo "User chose to retry the upgrade. Retrying..."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Completed Create-Package-With-SC pipeline. Source_Control_Task_ID=${env.Source_Control_Task_ID}"
+        }
+        success {
+            echo "Successfully created package ${env.DBMaestro_Package_Name}."
+        }
+        failure {
+            echo "Pipeline failed. Review logs for details."
+        }
+    }
+}
